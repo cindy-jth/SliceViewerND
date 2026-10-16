@@ -141,14 +141,6 @@ You are free to use, modify, and redistribute this software under the terms of t
 
 See the [LICENSE](LICENSE) file for the full license terms.
 
-## Citation
-
-If you use `SliceViewerND` in research leading to a publication, please cite this software.
-
-Citation information is provided in [CITATION.cff](CITATION.cff).
-
-Academic citation is appreciated but is not a legal requirement of GPL v3.
-
 ## AI Assistance
 
 This software was developed by Tianhui (Cindy) Jie with assistance from OpenAI ChatGPT (GPT-6, October 16, 2026) for code development, debugging, optimization, and documentation.
