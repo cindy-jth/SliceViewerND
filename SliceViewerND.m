@@ -1,52 +1,17 @@
 function fig = SliceViewerND(data, displayRange, cmap, dimNames, ...
     figName, fig, sliderPosition, nDimensions, dimensionRatio)
-% SLICEVIEWERND Interactive N-dimensional image viewer with orthogonal views.
+% SLICEVIEWERND Interactive N-dimensional MATLAB image viewer.
 %
-% AUTHOR AND VERSION INFORMATION
+%   FIG = SLICEVIEWERND(DATA) opens an interactive viewer for real-valued
+%   N-dimensional image arrays. The first two dimensions represent Y and X,
+%   respectively. Dimensions 3 through N can be navigated independently
+%   using sliders or keyboard arrow keys.
 %
-%   Author:       Tianhui (Cindy) Jie
-%   Date:         October 16, 2026
-%   Version:      1.0.0
-%
-%   AI Assistance:
-%       This function was developed by Tianhui (Cindy) Jie with the
-%       assistance of OpenAI ChatGPT (GPT-6, October 16, 2026).
-%
-%       AI assistance was used for MATLAB code development, debugging,
-%       optimization, user-interface design, and documentation.
-%
-%       The author directed the development, specified the functional
-%       requirements, and is responsible for reviewing, validating,
-%       and maintaining the final implementation.
-%
-%   AI Tool Citation:
-%       OpenAI. (2026). ChatGPT (GPT-6) [Large language model].
-%       https://chatgpt.com/
-%
-%   Version History:
-%       v1.0.0 (2026-10-16)
-%           - Interactive visualization of N-dimensional image arrays.
-%           - Orthogonal XY, X-D, and Y-D image views.
-%           - Independent dimension navigation and averaging controls.
-%           - Movable averaging windows.
-%           - Adjustable color limits and colormaps.
-%           - User-defined physical X:Y:D dimension ratios.
-%           - Independent aspect-ratio scaling for each image view.
-%           - Improved layout management to prevent image overlap.
-%           - Optimized image loading and interactive performance.
-%
-% DESCRIPTION
-%
-%   FIG = SLICEVIEWERND(DATA) opens an interactive viewer for visualizing
-%   multidimensional numeric arrays. The first two dimensions of DATA are
-%   interpreted as the spatial Y and X dimensions, respectively, while
-%   dimensions 3 through N can be navigated using independent sliders.
-%
-%   The viewer supports interactive slice selection, averaging over
-%   arbitrary ranges of higher dimensions, orthogonal visualization,
-%   adjustable display limits, and physically scaled image rendering.
+%   The viewer supports multidimensional averaging, linked orthogonal
+%   views, physical aspect-ratio control, and interactive display settings.
 %
 % SYNTAX
+%
 %   FIG = SliceViewerND(DATA)
 %   FIG = SliceViewerND(DATA, DISPLAYRANGE)
 %   FIG = SliceViewerND(DATA, DISPLAYRANGE, CMAP)
@@ -59,7 +24,7 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, ...
 % INPUT ARGUMENTS
 %
 %   DATA
-%       Real-valued numeric array containing the image data.
+%       Real-valued numeric N-dimensional array.
 %
 %       Dimension convention:
 %           Dimension 1: Y (image rows)
@@ -69,158 +34,70 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, ...
 %           ...
 %           Dimension N: (N-2)th navigable dimension
 %
-%       Supported array sizes include:
-%           [Y, X]
-%           [Y, X, Z]
-%           [Y, X, Z, T]
-%           [Y, X, Z, T, R]
-%           ...
-%
-%       Each dimension beyond the first two receives an independent
-%       slice-selection slider and averaging controls.
-%
 %   DISPLAYRANGE
-%       Two-element numeric vector specifying the image color limits:
+%       Two-element numeric vector [minimum maximum] specifying
+%       the image color limits.
 %
-%           [minimum maximum]
-%
-%       Default:
-%           [min(DATA(:)), max(DATA(:))]
-%
-%       The display range can be modified interactively using the
-%       CLim controls in the figure toolbar.
-%
-%       Changing CLim affects only the displayed intensity mapping
-%       and does not modify the underlying image data.
+%       Default: [min(DATA(:)), max(DATA(:))]
 %
 %   CMAP
-%       MATLAB colormap used to display the images.
+%       MATLAB colormap used for image display.
 %
-%       Default:
-%           gray(256)
-%
-%       Examples:
-%           gray(256)
-%           turbo(256)
-%           hot(256)
-%           parula(256)
+%       Default: gray(256)
 %
 %   DIMNAMES
-%       String array specifying the names of dimensions 3 through N.
+%       String array specifying names for dimensions 3 through N.
 %
-%       The number of names must equal NDIMENSIONS - 2.
+%       Example: ["Depth", "Time", "Repetition"]
 %
-%       Default:
-%           ["Dimension 3", "Dimension 4", ...]
-%
-%       Example:
-%           ["Depth", "Time", "Repetition"]
-%
-%       These names appear in the dimension sliders, image titles,
-%       and orthogonal-view selection menu.
+%       Default: Automatically generated dimension names.
 %
 %   FIGNAME
-%       String specifying the figure window title.
+%       Figure window title.
 %
-%       Default:
-%           "ND Slice Viewer"
+%       Default: "ND Slice Viewer"
 %
 %   FIG
-%       Optional existing MATLAB figure or UIFigure handle.
-%
+%       Optional existing figure handle.
 %       If empty, a new UIFigure is created.
 %
-%       If an existing figure is supplied, its contents are cleared
-%       and the viewer is constructed inside that figure.
-%
-%       Default:
-%           []
+%       Default: []
 %
 %   SLIDERPOSITION
-%       Location of the dimension-navigation controls.
+%       Position of dimension-navigation controls.
 %
 %       Options:
-%           "bottom"  - Sliders arranged below the image viewer.
-%           "right"   - Sliders arranged to the right of the images.
+%           "bottom" - Sliders below the images.
+%           "right"  - Sliders to the right of the images.
 %
-%       Default:
-%           "bottom"
+%       Default: "bottom"
 %
 %   NDIMENSIONS
-%       Number of dimensions to represent in the viewer.
+%       Explicit number of dimensions represented in the viewer.
+%       Useful for arrays containing trailing singleton dimensions.
 %
-%       This argument is useful when the data contains trailing
-%       singleton dimensions that MATLAB does not report through
-%       NDIMS(DATA).
-%
-%       Default:
-%           max(3, ndims(DATA))
-%
-%       Example:
-%           size(DATA) = [256 512 100]
-%
-%           NDIMENSIONS = 5
-%
-%       The viewer treats DATA as having dimensions:
-%           [256 512 100 1 1]
-%
-%       NDIMENSIONS must be at least max(3, ndims(DATA)).
+%       Default: max(3, ndims(DATA))
 %
 %   DIMENSIONRATIO
-%       Three-element positive numeric vector specifying the relative
-%       physical spacing of the X, Y, and selected orthogonal dimension D.
+%       Three-element positive numeric vector specifying relative
+%       physical sample spacing along X, Y, and D.
 %
-%       Format:
-%           [X Y D]
+%       Format: [X Y D]
+%       Default: [1 1 1]
 %
-%       Default:
-%           [1 1 1]
+%       D corresponds to the currently selected orthogonal dimension.
 %
-%       Example:
-%           [1 1 2]
+%       Each image view uses the physical spacing of its own axes:
+%           XY view: X:Y
+%           X-D view: X:D
+%           Y-D view: D:Y
 %
-%       This indicates that one sample along D represents twice the
-%       physical distance of one sample along X or Y.
-%
-%       The ratios are applied independently to the three image views:
-%
-%           XY view:
-%               Horizontal axis = X
-%               Vertical axis   = Y
-%               Aspect ratio    = X:Y
-%
-%           X-D view:
-%               Horizontal axis = X
-%               Vertical axis   = D
-%               Aspect ratio    = X:D
-%
-%           Y-D view:
-%               Horizontal axis = D
-%               Vertical axis   = Y
-%               Aspect ratio    = D:Y
-%
-%       Ratios can be modified interactively using the X, Y, and D
-%       numeric fields in the figure toolbar.
-%
-%       The D field is visible only when orthogonal views are enabled.
-%
-%       Each view is scaled independently so that changing one
-%       dimension ratio does not unnecessarily resize a view that
-%       does not contain that dimension.
+%       Physical ratios affect visualization geometry only.
 %
 % OUTPUT ARGUMENT
 %
 %   FIG
 %       Handle to the UIFigure containing the interactive viewer.
-%
-%       The returned handle can be used to:
-%           - Change the figure size or position
-%           - Modify figure properties
-%           - Close the viewer programmatically
-%
-%       Example:
-%           FIG.Position = [100 100 1600 900];
-%
 %
 % INTERACTIVE FEATURES
 %
@@ -228,255 +105,238 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, ...
 %
 %       Each dimension beyond X and Y has an independent slider.
 %
-%       Moving a slider updates the displayed XY image while keeping
-%       the other dimensions fixed at their currently selected indices.
+%       Moving a slider selects the corresponding image slice.
+%       Slider positions are rounded to integer indices.
 %
-%       Slider values are rounded to integer indices.
+%       Other dimensions remain at their currently selected indices
+%       unless averaging is enabled.
 %
+%   2. KEYBOARD NAVIGATION
 %
-%   2. DIMENSION AVERAGING
+%       Keyboard arrow keys provide precise integer-step navigation
+%       for all interactive position sliders.
+%
+%       Instructions:
+%           1. Click a slider to select it.
+%           2. Use the left and right arrow keys to navigate.
+%
+%       Keyboard controls:
+%           Left Arrow  - Decrease the selected value by exactly 1.
+%           Right Arrow - Increase the selected value by exactly 1.
+%
+%       Supported sliders:
+%
+%           Dimension sliders:
+%               Move backward or forward by one slice.
+%
+%           Averaging window-position sliders:
+%               Shift the averaging interval by one index while
+%               preserving the window width.
+%
+%           Orthogonal X/Y location sliders:
+%               Move the selected cross-sectional location by
+%               one pixel along X or Y.
+%
+%       Each key press:
+%           - Changes the selected slider value by exactly one integer.
+%           - Moves the slider thumb to the new integer position.
+%           - Updates the corresponding image or averaging interval.
+%           - Updates associated position indicators.
+%           - Preserves unrelated dimension indices and settings.
+%
+%       Keyboard navigation is constrained to each slider's
+%       valid minimum and maximum values.
+%
+%       The viewer automatically tracks the most recently selected
+%       slider to determine which control receives keyboard input.
+%
+%       Disabled sliders cannot be navigated using arrow keys.
+%
+%   3. MULTIDIMENSIONAL AVERAGING
 %
 %       Each navigable dimension includes an Average toggle.
 %
-%       When averaging is enabled:
-%           - The corresponding slice-selection slider is disabled.
-%           - The selected range of slices is averaged.
-%           - The averaging range is controlled by Start and End fields.
-%           - A Window Position slider becomes available.
+%       When enabled:
+%           - The dimension's slice-selection slider is disabled.
+%           - Data are averaged over a user-defined range.
+%           - Start and End fields control the averaging interval.
+%           - A Window Position slider shifts the averaging interval.
 %
-%       Averaging is performed using:
-%
-%           mean(DATA, dimension, 'omitnan')
-%
-%       NaN values are ignored during averaging.
-%
+%       Averaging uses mean(...,'omitnan') to ignore NaN values.
 %       Multiple dimensions can be averaged simultaneously.
 %
-%
-%   3. MOVABLE AVERAGING WINDOW
+%   4. MOVABLE AVERAGING WINDOWS
 %
 %       The Window Position slider shifts the averaging interval
 %       without changing its width.
 %
 %       Example:
-%           Initial averaging range: [10 20]
-%           Window width:            11 slices
+%           Original range: [10 20]
+%           Shifted range:  [30 40]
 %
-%           Moving the window to 30 produces:
-%           New averaging range:     [30 40]
+%       The averaging window remains within valid dimension bounds.
 %
-%       The averaging window is constrained to remain within the
-%       valid indices of the corresponding dimension.
+%       Keyboard arrow navigation can shift the window by exactly
+%       one index per keypress.
 %
-%       If the averaging window spans the entire dimension, its
-%       position cannot change.
+%   5. ORTHOGONAL VIEWS
 %
+%       Orthogonal visualization displays three linked image views:
 %
-%   4. ORTHOGONAL VIEWS
+%           XY  - Main image.
+%           X-D - Cross-section at the selected Y position.
+%           Y-D - Cross-section at the selected X position.
 %
-%       The Orthogonal Views button enables two additional images:
+%       D is selected using the orthogonal-dimension dropdown.
 %
-%           XY  - Main image
-%           X-D - Cross-section at the selected Y position
-%           Y-D - Cross-section at the selected X position
+%       Dedicated X and Y position sliders determine the
+%       cross-sectional locations.
 %
-%       D corresponds to the higher dimension selected in the
-%       Dimension dropdown.
+%       These sliders support keyboard arrow navigation, allowing
+%       cross-sectional positions to move by exactly one pixel.
 %
-%       For example, if D is the third dimension:
+%       Position indicators show the intersection coordinates
+%       across the linked image views.
 %
-%           XY = DATA(:,:,d)
-%           XD = squeeze(DATA(y,:,:))
-%           YD = squeeze(DATA(:,x,:))
+%   6. PHYSICAL ASPECT RATIOS
 %
-%       The X and Y position sliders select the intersection
-%       coordinates used to construct the orthogonal images.
+%       Relative physical sample spacings are specified using
+%       the X, Y, and D ratio controls.
 %
-%       The three views are linked through position indicators.
+%       Each image view maintains its own physical aspect ratio.
+%       Changing a ratio does not unnecessarily resize a view
+%       that does not contain the corresponding dimension.
 %
+%       The layout separates image views to prevent overlap
+%       when orthogonal visualization is enabled.
 %
-%   5. POSITION INDICATORS
+%   7. DISPLAY SETTINGS
 %
-%       The main XY image contains:
-%           Green vertical line - Selected X position
-%           Red horizontal line - Selected Y position
+%       The image color limits can be modified interactively.
+%       All image views share the same colormap and display range.
 %
-%       The orthogonal views contain corresponding intersection
-%       indicators and yellow dashed lines identifying the
-%       selected D position or averaging interval.
+%       Display adjustments do not modify the original data.
 %
-%       When averaging is enabled along D, two yellow dashed lines
-%       indicate the beginning and end of the averaging range.
+% EXAMPLES
 %
-%
-%   6. PHYSICAL ASPECT RATIO
-%
-%       Image aspect ratios are determined by the physical spacing
-%       of the displayed dimensions.
-%
-%       The viewer uses MATLAB's DataAspectRatio property to
-%       preserve the specified relative physical dimensions.
-%
-%       Each image view is handled independently to prevent
-%       unrelated dimension-ratio changes from shrinking other views.
-%
-%       The layout separates the three views to prevent overlapping
-%       images when orthogonal visualization is enabled.
-%
-%       Some unused space may remain when preserving the physical
-%       aspect ratio within a fixed-size figure.
-%
-%
-%   7. DISPLAY RANGE AND COLORMAP
-%
-%       All image views share the same colormap and color limits.
-%
-%       The CLim minimum and maximum can be modified interactively.
-%
-%       These adjustments change visualization only and do not
-%       modify DATA.
-%
-%
-% USAGE EXAMPLES
-%
-%   EXAMPLE 1: Basic 3D image stack
+%   Example 1: Basic 3D visualization
 %
 %       data = rand(256,512,100);
-%
 %       fig = SliceViewerND(data);
 %
-%       Opens a viewer displaying 2D slices of a 3D array.
-%       The third dimension is controlled by a slider.
+%   Example 2: Custom colormap and dimension names
 %
-%
-%   EXAMPLE 2: Custom display range and colormap
-%
-%       data = rand(256,512,100);
-%
-%       fig = SliceViewerND(data,[0 1],turbo(256));
-%
-%       Displays the image using the turbo colormap with
-%       color limits between 0 and 1.
-%
-%
-%   EXAMPLE 3: Multidimensional OCT dataset
-%
-%       data = rand(512,1024,200,10,5);
-%
-%       dimNames = ["B-scan","Repetition","Cycle"];
-%
-%       fig = SliceViewerND(data,[0 1],gray(256),dimNames);
-%
-%       Creates a viewer with three independent navigation sliders.
-%
-%       Dimensions:
-%           Y          = 512 pixels
-%           X          = 1024 pixels
-%           B-scan     = 200
-%           Repetition = 10
-%           Cycle      = 5
-%
-%
-%   EXAMPLE 4: Place sliders on the right
-%
-%       data = rand(256,512,100,20);
+%       data = rand(512,1024,200,10);
 %
 %       fig = SliceViewerND(data,[0 1],turbo(256), ...
-%           ["Depth","Time"],"4D Image Viewer",[],"right");
+%           ["Depth","Time"],"4D Image Viewer");
 %
-%       Places the dimension sliders to the right of the image.
+%   Example 3: OCT volume with physical sample spacing
 %
+%       data = rand(512,1024,256);
 %
-%   EXAMPLE 5: Specify physical dimension ratios
-%
-%       data = rand(256,512,100);
-%
-%       dimensionRatio = [1 1 2];
-%
-%       fig = SliceViewerND(data,[0 1],gray(256), ...
-%           "Depth","Physical Image Viewer",[],"right",3, ...
-%           dimensionRatio);
-%
-%       Uses relative physical sample spacings:
-%           X = 1
-%           Y = 1
-%           D = 2
-%
-%       When orthogonal views are enabled, the D dimension is
-%       displayed with twice the physical spacing of X and Y.
-%
-%
-%   EXAMPLE 6: OCT volume with anisotropic voxel spacing
-%
-%       data = rand(512,1024,256,10);
-%
-%       % Physical sample spacing in micrometers
-%       dx = 5;
+%       dx = 5;  % micrometers/pixel
 %       dy = 5;
 %       dz = 2;
 %
-%       dimensionRatio = [dx dy dz];
+%       fig = SliceViewerND(data,[0 1],gray(256), ...
+%           "Depth","OCT Volume",[],"right",3,[dx dy dz]);
+%
+%   Example 4: Higher-dimensional dataset
+%
+%       data = rand(256,512,100,20,5);
 %
 %       fig = SliceViewerND(data,[0 1],gray(256), ...
-%           ["Depth","Repetition"], ...
-%           "OCT Volume",[], ...
-%           "right",4,dimensionRatio);
+%           ["Depth","Time","Repetition"], ...
+%           "5D Viewer",[],"bottom",5,[1 1 2]);
 %
-%       The viewer uses the relative physical spacing to render
-%       geometrically scaled cross-sectional images.
-%
-%       Note that D always corresponds to the dimension currently
-%       selected in the orthogonal-view dropdown.
-%
-%       If different higher dimensions have different physical
-%       spacings, update the D ratio when changing the selected
-%       orthogonal dimension.
-%
-%
-%   EXAMPLE 7: Explicit trailing singleton dimensions
+%   Example 5: Keyboard navigation
 %
 %       data = rand(256,512,100);
+%       fig = SliceViewerND(data);
 %
-%       fig = SliceViewerND(data,[0 1],gray(256), ...
-%           ["Depth","Time","Cycle"], ...
-%           "5D Viewer",[],"bottom",5);
+%       % Click a dimension slider and press the arrow keys
+%       % to navigate one slice at a time.
 %
-%       Treats the input as a five-dimensional array with size:
+%       % Enable averaging and click its Window Position slider.
+%       % Use the arrow keys to shift the averaging window by
+%       % exactly one index.
 %
-%           [256 512 100 1 1]
-%
-%
-%   EXAMPLE 8: Display a processed OCT image stack
-%
-%       % Example logarithmic intensity image
-%       data = rand(512,1024,100);
-%       dataDB = 20*log10(data + eps);
-%
-%       fig = SliceViewerND(dataDB,[-60 0],gray(256), ...
-%           "B-scan","OCT Intensity (dB)",[],"right",3, ...
-%           [1 1 1]);
-%
-%       Displays the logarithmic OCT intensity with a fixed
-%       dynamic range of -60 to 0 dB.
-%
+%       % Enable Orthogonal Views and click the X or Y slider.
+%       % Use the arrow keys to move the cross-sectional location
+%       % by exactly one pixel.
 %
 % NOTES
 %
-%   - The first two dimensions are always interpreted as Y and X.
-%   - Orthogonal views can be enabled or disabled interactively.
-%   - D refers to the selected higher dimension, not necessarily
-%     the third dimension of DATA.
-%   - Averaging is performed independently across enabled dimensions.
-%   - NaN values are ignored during averaging.
-%   - Physical dimension ratios control visualization geometry only.
+%   - The first two dimensions always represent Y and X.
+%   - Dimensions 3 through N support independent navigation.
+%   - Keyboard navigation supports dimension, averaging-window,
+%     and orthogonal X/Y location sliders.
+%   - Arrow keys change the selected slider value by one integer.
+%   - Slider positions and displayed indices remain synchronized.
+%   - Averaging ignores NaN values.
+%   - Physical ratios specify sample spacing, not image dimensions.
+%   - The orthogonal dimension D can be selected interactively.
 %   - The original input array is not modified.
-%   - Large multidimensional datasets may require substantial memory.
-%   - Interactive performance depends on dataset size and averaging range.
-%   - The viewer uses UIFigure, UIAxes, and UIGridLayout components.
+%   - Large datasets may require substantial memory.
+%
+% AUTHOR AND VERSION INFORMATION
+%
+%   Author:       Tianhui (Cindy) Jie
+%   Date:         October 16, 2026
+%   Version:      1.1.0
+%   License:      GNU General Public License v3.0
+%
+%   Copyright (c) 2026 Tianhui (Cindy) Jie
+%   SPDX-License-Identifier: GPL-3.0-only
+%
+%   Licensed under the GNU General Public License v3.0.
+%   See the LICENSE file for the complete license terms.
+%
+% AI ASSISTANCE
+%
+%   Developed by Tianhui (Cindy) Jie with assistance from
+%   OpenAI ChatGPT (GPT-6, October 16, 2026).
+%
+%   AI assistance included code development, debugging,
+%   optimization, user-interface design, and documentation.
+%
+%   The author directed development and is responsible for
+%   reviewing, validating, and maintaining the implementation.
+%
+%   AI Tool Citation:
+%       OpenAI. (2026). ChatGPT (GPT-6) [Large language model].
+%       https://chatgpt.com/
+%
+% VERSION HISTORY
+%
+%   v1.1.0 (2026-10-16)
+%       - Added keyboard arrow navigation for all position sliders.
+%       - Automatically tracks the most recently selected slider.
+%       - Left/right arrow keys change slider values by exactly
+%         one integer per keypress.
+%       - Added keyboard navigation for dimension slice sliders.
+%       - Added keyboard navigation for averaging window-position
+%         sliders, preserving the averaging window width.
+%       - Added keyboard navigation for orthogonal X/Y location
+%         sliders, enabling one-pixel cross-sectional movement.
+%       - Synchronized slider-thumb positions with selected indices.
+%       - Automatically updates images, averaging intervals, and
+%         position indicators after keyboard navigation.
+%       - Constrained navigation to valid slider limits.
+%
+%   v1.0.0 (2026-10-16)
+%       - Initial release.
+%       - N-dimensional slice navigation and averaging.
+%       - Movable averaging windows.
+%       - Linked orthogonal XY, X-D, and Y-D views.
+%       - Physical aspect-ratio controls.
+%       - Independent image scaling and nonoverlapping layout.
+%       - Interactive display settings and orthogonal data caching.
 %
 % SEE ALSO
 %   imagesc, sliceViewer, uifigure, uiaxes, uislider, uigridlayout,
-%   daspect, clim, colormap, mean
+%   daspect, caxis, clim, colormap, mean
 %
 
     arguments
@@ -528,6 +388,9 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, ...
     currentDimensionRatio = dimensionRatio;
     cachedOrthVol = [];
     cachedOrthDim = 0;
+    activeSlider = [];  % Last operated slider (slice, averaging window, X or Y).
+    activeSliderKind = '';
+    activeSliderDim = [];
 
     if isempty(fig)
         % Choose an initial window size based on the physical XY image shape.
@@ -852,6 +715,8 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, ...
     ratioYField.ValueChangedFcn = @(~,~) updateDimensionRatios();
     ratioDField.ValueChangedFcn = @(~,~) updateDimensionRatios();
 
+    fig.WindowKeyPressFcn = @sliceKeyboardCallback;
+
     updateImages();
     updateDimensionRatios();
 
@@ -905,9 +770,70 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, ...
         end
     end
 
+    function selectSlider(handle,kind,d)
+        activeSlider = handle;
+        activeSliderKind = kind;
+        activeSliderDim = d;
+    end
+
     function sliceCallback(d,value)
-        idx(d) = min(max(round(value),1),nDims(d));
+        selectSlider(sliders(d),'slice',d);
+        newIndex = min(max(round(value),1),nDims(d));
+        idx(d) = newIndex;
+        if sliders(d).Value ~= newIndex
+            sliders(d).Value = newIndex;
+        end
         updateImages();
+    end
+
+    function sliceKeyboardCallback(~,event)
+        % Arrow keys step the focused slider by exactly one integer.
+        if isempty(activeSlider) || ~ismember(event.Key,{'leftarrow','rightarrow'})
+            return;
+        end
+        if ~isvalid(activeSlider) || ~strcmp(activeSlider.Enable,'on') || ...
+                ~strcmp(activeSlider.Visible,'on')
+            return;
+        end
+        % Do not hijack keyboard arrows from numeric fields, dropdowns,
+        % or another UI component. CurrentObject is available in modern
+        % MATLAB releases; if unavailable, use the last operated slider.
+        try
+            focused = fig.CurrentObject;
+            if ~isequal(focused,activeSlider)
+                return;
+            end
+        catch
+        end
+        delta = 1;
+        if strcmp(event.Key,'leftarrow'), delta = -1; end
+        d = activeSliderDim;
+        switch activeSliderKind
+            case 'slice'
+                if avgEnabled(d), return; end
+                oldIndex = idx(d);
+                newIndex = min(max(oldIndex+delta,1),nDims(d));
+                activeSlider.Value = newIndex;
+                if newIndex ~= oldIndex, sliceCallback(d,newIndex); end
+            case 'window'
+                width = diff(avgRanges(d,:))+1;
+                maxStart = nDims(d)-width+1;
+                if maxStart<=1, return; end
+                oldIndex = avgRanges(d,1);
+                newIndex = min(max(oldIndex+delta,1),maxStart);
+                activeSlider.Value = newIndex;
+                if newIndex ~= oldIndex, windowCallback(d,newIndex); end
+            case 'x'
+                oldIndex = xPos;
+                newIndex = min(max(oldIndex+delta,1),nX);
+                activeSlider.Value = newIndex;
+                if newIndex ~= oldIndex, positionCallback(1,newIndex); end
+            case 'y'
+                oldIndex = yPos;
+                newIndex = min(max(oldIndex+delta,1),nY);
+                activeSlider.Value = newIndex;
+                if newIndex ~= oldIndex, positionCallback(2,newIndex); end
+        end
     end
 
     function averageCallback(d,value)
@@ -938,10 +864,12 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, ...
     end
 
     function windowCallback(d,value)
+        selectSlider(windowSliders(d),'window',d);
         width = diff(avgRanges(d,:))+1;
         maxStart = nDims(d)-width+1;
         a = min(max(round(value),1),maxStart);
         avgRanges(d,:) = [a,a+width-1];
+        if windowSliders(d).Value ~= a, windowSliders(d).Value = a; end
         startFields(d).Value = a;
         endFields(d).Value = a+width-1;
         updateImages();
@@ -1037,9 +965,13 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, ...
 
     function positionCallback(which,value)
         if which==1
+            selectSlider(xSlider,'x',1);
             xPos = min(max(round(value),1),nX);
+            if xSlider.Value ~= xPos, xSlider.Value = xPos; end
         else
+            selectSlider(ySlider,'y',2);
             yPos = min(max(round(value),1),nY);
+            if ySlider.Value ~= yPos, ySlider.Value = yPos; end
         end
         updateImages();
     end
