@@ -2,22 +2,39 @@
 
 ### Interactive N-Dimensional Image Viewer for MATLAB
 
-**Version:** 1.1.0  
+**Version:** 1.2.0  
 **Author:** Tianhui (Cindy) Jie  
-**Last Updated:** October 16, 2026  
+**Last Updated:** November 17, 2026  
 **License:** GNU General Public License v3.0 (GPL-3.0-only)
 
 SliceViewerND is an interactive MATLAB visualization tool for exploring multidimensional image arrays.
 
-It supports independent slice navigation, multidimensional averaging, movable averaging windows, linked orthogonal views, physical aspect-ratio adjustments, and interactive display controls.
+It supports synchronized multi-image comparison, independent slice navigation, multidimensional averaging, movable averaging windows, linked orthogonal views, physical aspect-ratio adjustments, and per-image display controls.
 
 Designed for scientific imaging applications, including optical coherence tomography (OCT), microscopy, volumetric imaging, and time-resolved datasets.
 
 ---
 
+## What's New in v1.2.0
+
+Version 1.2.0 introduces **multi-image comparison** for viewing any number of N-dimensional datasets side by side, with shared navigation and independent display settings.
+
+- **Multi-image comparison:** Pass a cell array of datasets to display them in automatically arranged panels.
+- **Synchronized navigation:** Slice indices, averaging ranges, and orthogonal cross-section positions are shared across datasets.
+- **Independent display settings:** Configure separate color limits (CLim), colormaps, and NaN background colors for each dataset.
+- **Automatic NaN padding:** Smaller arrays are padded at their high-index edges to accommodate different dataset sizes.
+- **Custom image names:** Supply labels through `imageNames`, or use automatically detected input variable names where available.
+- **Image selector:** Choose which image's CLim to edit from the toolbar dropdown immediately left of the CLim controls.
+
+All existing single-image navigation and visualization features remain supported.
+
 ## Features
 
-### 1. N-Dimensional Slice Navigation
+### 1. Multi-Image Comparison (New in v1.2.0)
+
+Pass `{A, B, C, ...}` to view multiple real-valued numeric arrays in a tiled layout. The viewer uses a common size based on the largest extent in each dimension and pads smaller datasets with NaNs. Navigation, averaging, orthogonal positioning, and physical aspect-ratio controls are synchronized, while color limits, colormaps, and NaN colors can differ between images.
+
+### 2. N-Dimensional Slice Navigation
 
 - Supports real-valued numeric arrays with three or more dimensions.
 - Displays dimensions 1 and 2 as the Y and X image axes.
@@ -26,7 +43,7 @@ Designed for scientific imaging applications, including optical coherence tomogr
 - Preserves the selected indices of other dimensions during navigation.
 - Allows custom dimension names.
 
-### 2. Keyboard Navigation (New in v1.1.0)
+### 3. Keyboard Navigation (New in v1.1.0)
 
 Use the **left and right arrow keys** to navigate any selected position slider by exactly one integer step.
 
@@ -52,7 +69,7 @@ Each keypress:
 
 Disabled sliders cannot be navigated using arrow keys.
 
-### 3. Multidimensional Averaging
+### 4. Multidimensional Averaging
 
 Each navigable dimension includes an independent averaging toggle.
 
@@ -66,7 +83,7 @@ When averaging is enabled:
 
 Multiple dimensions can be averaged simultaneously.
 
-### 4. Movable Averaging Windows
+### 5. Movable Averaging Windows
 
 Averaging intervals can be shifted interactively without changing their widths.
 
@@ -81,7 +98,7 @@ The averaging window remains within the valid dimension bounds.
 
 **New in v1.1.0:** Click the Window Position slider and use the left/right arrow keys to shift the entire averaging interval by exactly one index.
 
-### 5. Linked Orthogonal Views
+### 6. Linked Orthogonal Views
 
 Optional orthogonal visualization provides three linked views:
 
@@ -98,12 +115,12 @@ Additional features include:
 - Independent X and Y cross-sectional location sliders.
 - Linked position indicators across views.
 - Automatic updates when positions or dimensions change.
-- Consistent colormap and color limits across views.
+- Consistent colormap and color limits across the three views of each image; different images may use different settings.
 - Independent image geometry to prevent overlapping views.
 
 **New in v1.1.0:** The X and Y location sliders support one-pixel keyboard navigation using the left/right arrow keys.
 
-### 6. Physical Aspect-Ratio Control
+### 7. Physical Aspect-Ratio Control
 
 Specify relative physical sample spacing along X, Y, and D using:
 
@@ -123,11 +140,13 @@ The ratios affect visualization geometry without modifying the underlying image 
 
 Each view is scaled independently, so changing one physical dimension does not unnecessarily alter views that do not contain that dimension.
 
-### 7. Interactive Display Settings
+### 8. Interactive Display Settings
 
 - Adjustable image color limits.
 - Custom MATLAB colormaps.
-- Shared display range across image views.
+- Independent CLim per dataset, shared across that dataset's XY and orthogonal views.
+- Per-dataset colormaps and NaN background colors.
+- Image selector for choosing which dataset's CLim to edit.
 - Interactive updates without modifying the original data.
 
 ---
@@ -159,22 +178,24 @@ fig = SliceViewerND(data);
 ### Full Syntax
 
 ```matlab
-fig = SliceViewerND(data, displayRange, cmap, dimNames, ...
-    figName, fig, sliderPosition, nDimensions, dimensionRatio);
+fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
+    figName, fig, nanColor, sliderPosition, nDimensions, dimensionRatio);
 ```
 
 ### Input Arguments
 
 | Argument | Description | Default |
 |----------|-------------|---------|
-| `data` | Real-valued N-dimensional numeric array | Required |
-| `displayRange` | Two-element vector specifying color limits | Data range |
-| `cmap` | MATLAB colormap | `gray(256)` |
+| `data` | Real-valued N-dimensional numeric array, or cell array of such arrays | Required |
+| `displayRange` | `[min max]`, one N-by-2 matrix, or N-cell array of ranges | Per-dataset finite data range |
+| `cmap` | One M-by-3 RGB colormap (or colormap name), or a cell array of N colormaps | `gray(256)` |
 | `dimNames` | Names for dimensions 3 through N | Automatically generated |
+| `imageNames` | N image labels; input variable name(s) used when detectable | Automatic labels |
 | `figName` | Figure window title | `"ND Slice Viewer"` |
 | `fig` | Existing figure handle | `[]` |
+| `nanColor` | RGB triplet, N-by-3 RGB matrix, or N-cell array of RGB triplets | `[0.25 0.25 0.25]` |
 | `sliderPosition` | Position of navigation controls (`"bottom"` or `"right"`) | `"bottom"` |
-| `nDimensions` | Explicit number of dimensions | `max(3,ndims(data))` |
+| `nDimensions` | Explicit number of dimensions | `max(3, max(ndims of datasets))` |
 | `dimensionRatio` | Relative physical spacing `[X Y D]` | `[1 1 1]` |
 
 ### Output
@@ -184,6 +205,26 @@ fig = SliceViewerND(data, displayRange, cmap, dimNames, ...
 ---
 
 ## Examples
+
+### Example 0: Compare Multiple Datasets (New in v1.2.0)
+
+```matlab
+A = rand(128,128,40);
+B = 2*rand(100,120,35);
+C = 3*rand(80,90,20);
+
+fig = SliceViewerND({A,B,C}, ...
+    {[0 1],[0 2],[0 3]}, ...
+    {gray(256),turbo(256),hot(256)}, ...
+    "Depth", ...
+    ["Structural","Angiography","Dynamics"], ...
+    "Multi-Image Comparison");
+```
+
+Each dataset appears in its own panel. Smaller arrays are NaN-padded, and all panels share navigation and averaging controls. Each panel retains its own colormap and CLim.
+
+**Image naming:** For a single named array such as `SliceViewerND(A)`, the viewer uses `A` by default. For a named cell variable such as `datasets = {A,B,C}; SliceViewerND(datasets)`, labels default to `datasets{1}`, `datasets{2}`, etc. MATLAB cannot recover individual variable names from an inline `{A,B,C}` expression, so specify `imageNames` explicitly if desired.
+
 
 ### Example 1: Basic 3D Visualization
 
@@ -201,7 +242,7 @@ Creates a viewer with one slider for navigating the third dimension.
 data = rand(512,1024,200,10);
 
 fig = SliceViewerND(data,[0 1],turbo(256), ...
-    ["Depth","Time"],"4D Image Viewer");
+    ["Depth","Time"],[],"4D Image Viewer");
 ```
 
 Creates a four-dimensional viewer with independent Depth and Time sliders.
@@ -216,7 +257,7 @@ dy = 5;
 dz = 2;
 
 fig = SliceViewerND(data,[0 1],gray(256), ...
-    "Depth","OCT Volume",[],"right",3,[dx dy dz]);
+    "Depth",[],"OCT Volume",[],[0.25 0.25 0.25],"right",3,[dx dy dz]);
 ```
 
 The physical sample spacing is used to preserve the relative dimensions of the displayed cross-sections.
@@ -227,8 +268,8 @@ The physical sample spacing is used to preserve the relative dimensions of the d
 data = rand(256,512,100,20,5);
 
 fig = SliceViewerND(data,[0 1],gray(256), ...
-    ["Depth","Time","Repetition"], ...
-    "5D Viewer",[],"bottom",5,[1 1 2]);
+    ["Depth","Time","Repetition"],[], ...
+    "5D Viewer",[],[0.25 0.25 0.25],"bottom",5,[1 1 2]);
 ```
 
 Creates a five-dimensional viewer with independent navigation and averaging controls for Depth, Time, and Repetition.
@@ -280,7 +321,8 @@ The orthogonal images and position indicators update automatically.
 | X Location slider | Select X cross-sectional location | ← / → (±1 pixel) |
 | Y Location slider | Select Y cross-sectional location | ← / → (±1 pixel) |
 | X/Y/D ratio controls | Adjust physical sample spacing | — |
-| Color-limit controls | Adjust image display range | — |
+| Image selector | Choose dataset whose CLim is edited | — |
+| Color-limit controls | Adjust selected dataset's display range | — |
 
 ### Keyboard Navigation Notes
 
@@ -334,7 +376,7 @@ SliceViewerND is designed for interactive exploration of multidimensional datase
 
 For large arrays:
 
-- Memory usage depends on the size and numeric precision of the input array.
+- Memory usage depends on dataset sizes and numeric precision; NaN padding of smaller datasets can require additional memory.
 - Multidimensional averaging may require additional computation.
 - Orthogonal visualization requires extraction of cross-sectional images.
 - Cached orthogonal data can reduce repeated computations.
@@ -362,6 +404,19 @@ Compatibility may depend on the MATLAB release and availability of the required 
 ---
 
 ## Version History
+
+### v1.2.0 — November 17, 2026
+
+**Multi-Image Comparison & Custom Display Controls**
+
+- Added tiled side-by-side visualization for any number of N-dimensional datasets.
+- Synchronized slice navigation, multidimensional averaging, and orthogonal views across datasets.
+- Added independent colormaps, CLim ranges, and NaN background colors for each dataset.
+- Added automatic NaN padding for differently sized arrays.
+- Added optional `imageNames` and automatic input-variable naming where supported.
+- Added an image selector immediately left of the CLim controls.
+- Expanded documentation and examples for comparison mode.
+
 
 ### v1.1.0 — October 16, 2026
 
