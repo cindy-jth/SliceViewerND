@@ -1,290 +1,178 @@
-function fig = SliceViewerND(data, displayRange, cmap, dimNames, ...
-    figName, fig, sliderPosition, nDimensions, dimensionRatio)
-% SLICEVIEWERND Interactive N-dimensional MATLAB image viewer.
+function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
+    figName, fig, nanColor, sliderPosition, nDimensions, dimensionRatio)
+% SLICEVIEWERND Interactive N-dimensional MATLAB image viewer and comparator.
 %
-%   FIG = SLICEVIEWERND(DATA) opens an interactive viewer for real-valued
-%   N-dimensional image arrays. The first two dimensions represent Y and X,
-%   respectively. Dimensions 3 through N can be navigated independently
-%   using sliders or keyboard arrow keys.
+%   FIG = SLICEVIEWERND(DATA) displays slices of a real-valued numeric array.
+%   The first two dimensions represent Y (rows) and X (columns); dimensions
+%   3 through N are navigated using synchronized sliders and arrow keys.
+%   DATA can also be a cell array of any number of arrays for comparison.
 %
-%   The viewer supports multidimensional averaging, linked orthogonal
-%   views, physical aspect-ratio control, and interactive display settings.
-%
-% SYNTAX
+% SYNTAX (all inputs are positional and may be omitted from the right)
 %
 %   FIG = SliceViewerND(DATA)
-%   FIG = SliceViewerND(DATA, DISPLAYRANGE)
-%   FIG = SliceViewerND(DATA, DISPLAYRANGE, CMAP)
-%   FIG = SliceViewerND(DATA, DISPLAYRANGE, CMAP, DIMNAMES)
-%   FIG = SliceViewerND(DATA, DISPLAYRANGE, CMAP, DIMNAMES, FIGNAME)
-%   FIG = SliceViewerND(DATA, DISPLAYRANGE, CMAP, DIMNAMES, FIGNAME, FIG)
-%   FIG = SliceViewerND(DATA, DISPLAYRANGE, CMAP, DIMNAMES, FIGNAME, FIG, ...
-%                       SLIDERPOSITION, NDIMENSIONS, DIMENSIONRATIO)
+%   FIG = SliceViewerND(DATA, DISPLAYRANGE, CMAP, DIMNAMES, IMAGENAMES, ...
+%       FIGNAME, FIG, NANCOLOR, SLIDERPOSITION, NDIMENSIONS, DIMENSIONRATIO)
 %
 % INPUT ARGUMENTS
 %
 %   DATA
-%       Real-valued numeric N-dimensional array.
-%
-%       Dimension convention:
-%           Dimension 1: Y (image rows)
-%           Dimension 2: X (image columns)
-%           Dimension 3: First navigable dimension
-%           Dimension 4: Second navigable dimension
-%           ...
-%           Dimension N: (N-2)th navigable dimension
+%       A nonempty real numeric array or cell array {A,B,C,...} of nonempty
+%       real numeric arrays. Dimension 1 is Y; dimension 2 is X; dimensions
+%       3 through N are independently navigable. All comparison images
+%       share the same slice indices, averaging ranges, and orthogonal
+%       positions. Arrays smaller in any dimension are padded with NaN at
+%       their high-index edges to match the largest array in that dimension.
+%       Padding occurs internally; the caller's arrays are not modified.
 %
 %   DISPLAYRANGE
-%       Two-element numeric vector [minimum maximum] specifying
-%       the image color limits.
-%
-%       Default: [min(DATA(:)), max(DATA(:))]
+%       Color limits for each image. Accepts [min max] (shared across all
+%       images), an nImages-by-2 numeric matrix, or a cell array with one
+%       two-element range per image. Each range must be finite, increasing.
+%       Default: Per-image minimum and maximum of finite data values.
+%       Constant finite data are given a range expanded by +/- 0.5;
+%       images without finite values default to [0 1].
 %
 %   CMAP
-%       MATLAB colormap used for image display.
-%
-%       Default: gray(256)
+%       An M-by-3 RGB colormap, a colormap name (e.g., 'turbo'), or a
+%       cell array of colormaps/names with one entry per image. A single
+%       colormap is shared; separate entries provide independent colormaps.
+%       Default: gray(256).
 %
 %   DIMNAMES
-%       String array specifying names for dimensions 3 through N.
+%       String array with one name for each dimension 3 through N.
+%       Example: ["Depth","Time","Repetition"]
+%       Default: ["Dimension 3","Dimension 4",...].
 %
-%       Example: ["Depth", "Time", "Repetition"]
-%
-%       Default: Automatically generated dimension names.
+%   IMAGENAMES
+%       String array or cell array with one nonempty name per image.
+%       Names appear in the image-selection dropdown and main image titles.
+%       Default: The name of a directly passed numeric variable; for a
+%       named cell-array variable, names such as datasets{1}, datasets{2};
+%       otherwise "Image 1", "Image 2", etc. MATLAB cannot recover the
+%       names of variables inside an inline expression such as {A,B,C}.
 %
 %   FIGNAME
-%       Figure window title.
-%
-%       Default: "ND Slice Viewer"
+%       Figure window title. Default: "ND Slice Viewer".
 %
 %   FIG
-%       Optional existing figure handle.
-%       If empty, a new UIFigure is created.
+%       Existing valid MATLAB figure to reuse; its children are deleted.
+%       Default: [] (creates a new UIFigure).
 %
-%       Default: []
+%   NANCOLOR
+%       RGB color used behind transparent NaN pixels, including padding.
+%       Accepts one [R G B] triplet for all images, an nImages-by-3 matrix,
+%       or a cell array of one RGB triplet per image. Values must be in
+%       [0,1]. Default: [0.25 0.25 0.25].
 %
 %   SLIDERPOSITION
-%       Position of dimension-navigation controls.
-%
-%       Options:
-%           "bottom" - Sliders below the images.
-%           "right"  - Sliders to the right of the images.
-%
-%       Default: "bottom"
+%       "bottom" or "right" for dimension-navigation controls.
+%       Default: "bottom".
 %
 %   NDIMENSIONS
-%       Explicit number of dimensions represented in the viewer.
-%       Useful for arrays containing trailing singleton dimensions.
-%
-%       Default: max(3, ndims(DATA))
+%       Explicit dimensionality, including trailing singleton dimensions.
+%       Must be an integer at least max(3,ndims(A),ndims(B),...).
+%       Default: max(3, maximum ndims among input arrays).
 %
 %   DIMENSIONRATIO
-%       Three-element positive numeric vector specifying relative
-%       physical sample spacing along X, Y, and D.
+%       Positive, finite sample-spacing ratios [X Y D]. D is the currently
+%       selected orthogonal dimension. Used for display aspect ratios:
+%       XY -> X:Y; X-D -> X:D; Y-D -> D:Y.
+%       Default: [1 1 1].
 %
-%       Format: [X Y D]
-%       Default: [1 1 1]
-%
-%       D corresponds to the currently selected orthogonal dimension.
-%
-%       Each image view uses the physical spacing of its own axes:
-%           XY view: X:Y
-%           X-D view: X:D
-%           Y-D view: D:Y
-%
-%       Physical ratios affect visualization geometry only.
-%
-% OUTPUT ARGUMENT
+% OUTPUT
 %
 %   FIG
-%       Handle to the UIFigure containing the interactive viewer.
+%       Handle to the UIFigure containing the viewer.
 %
 % INTERACTIVE FEATURES
 %
-%   1. SLICE NAVIGATION
+%   1. SYNCHRONIZED COMPARISON
+%       Any number of images are arranged in a tiled layout. All panels
+%       use common navigation, averaging, orthogonal-dimension selection,
+%       and X/Y cross-sectional positions. Each panel has its own colormap,
+%       color limits, NaN background color, and image title. The image
+%       dropdown immediately left of CLim selects which panel's color
+%       limits to edit; changing CLim does not alter other panels.
 %
-%       Each dimension beyond X and Y has an independent slider.
-%
-%       Moving a slider selects the corresponding image slice.
-%       Slider positions are rounded to integer indices.
-%
-%       Other dimensions remain at their currently selected indices
-%       unless averaging is enabled.
-%
-%   2. KEYBOARD NAVIGATION
-%
-%       Keyboard arrow keys provide precise integer-step navigation
-%       for all interactive position sliders.
-%
-%       Instructions:
-%           1. Click a slider to select it.
-%           2. Use the left and right arrow keys to navigate.
-%
-%       Keyboard controls:
-%           Left Arrow  - Decrease the selected value by exactly 1.
-%           Right Arrow - Increase the selected value by exactly 1.
-%
-%       Supported sliders:
-%
-%           Dimension sliders:
-%               Move backward or forward by one slice.
-%
-%           Averaging window-position sliders:
-%               Shift the averaging interval by one index while
-%               preserving the window width.
-%
-%           Orthogonal X/Y location sliders:
-%               Move the selected cross-sectional location by
-%               one pixel along X or Y.
-%
-%       Each key press:
-%           - Changes the selected slider value by exactly one integer.
-%           - Moves the slider thumb to the new integer position.
-%           - Updates the corresponding image or averaging interval.
-%           - Updates associated position indicators.
-%           - Preserves unrelated dimension indices and settings.
-%
-%       Keyboard navigation is constrained to each slider's
-%       valid minimum and maximum values.
-%
-%       The viewer automatically tracks the most recently selected
-%       slider to determine which control receives keyboard input.
-%
-%       Disabled sliders cannot be navigated using arrow keys.
+%   2. SLICE AND KEYBOARD NAVIGATION
+%       Each dimension beyond X and Y has a slider; positions are rounded
+%       to integer indices. Click a position slider, then use left/right
+%       arrow keys to step by one index, subject to slider limits and focus.
+%       Supported controls include slice sliders, averaging-window sliders,
+%       and orthogonal X/Y position sliders. Disabled sliders do not move.
 %
 %   3. MULTIDIMENSIONAL AVERAGING
+%       The Average toggle disables the corresponding slice slider and
+%       averages over a user-selected inclusive Start-to-End range using
+%       mean(...,dimension,'omitnan'). Multiple dimensions can be averaged.
+%       The Window Position slider moves the interval without changing its
+%       width and also supports single-index keyboard steps.
 %
-%       Each navigable dimension includes an Average toggle.
+%   4. ORTHOGONAL VIEWS
+%       Orthogonal Views enables three linked views for every image:
+%         XY  - Main slice (Y rows, X columns)
+%         X-D - Cross-section at selected Y
+%         Y-D - Cross-section at selected X
+%       Choose D using the Dimension dropdown. X and Y sliders control
+%       cross-sectional positions; indicator lines show intersections and
+%       the main slice or averaging interval in the orthogonal views.
 %
-%       When enabled:
-%           - The dimension's slice-selection slider is disabled.
-%           - Data are averaged over a user-defined range.
-%           - Start and End fields control the averaging interval.
-%           - A Window Position slider shifts the averaging interval.
-%
-%       Averaging uses mean(...,'omitnan') to ignore NaN values.
-%       Multiple dimensions can be averaged simultaneously.
-%
-%   4. MOVABLE AVERAGING WINDOWS
-%
-%       The Window Position slider shifts the averaging interval
-%       without changing its width.
-%
-%       Example:
-%           Original range: [10 20]
-%           Shifted range:  [30 40]
-%
-%       The averaging window remains within valid dimension bounds.
-%
-%       Keyboard arrow navigation can shift the window by exactly
-%       one index per keypress.
-%
-%   5. ORTHOGONAL VIEWS
-%
-%       Orthogonal visualization displays three linked image views:
-%
-%           XY  - Main image.
-%           X-D - Cross-section at the selected Y position.
-%           Y-D - Cross-section at the selected X position.
-%
-%       D is selected using the orthogonal-dimension dropdown.
-%
-%       Dedicated X and Y position sliders determine the
-%       cross-sectional locations.
-%
-%       These sliders support keyboard arrow navigation, allowing
-%       cross-sectional positions to move by exactly one pixel.
-%
-%       Position indicators show the intersection coordinates
-%       across the linked image views.
-%
-%   6. PHYSICAL ASPECT RATIOS
-%
-%       Relative physical sample spacings are specified using
-%       the X, Y, and D ratio controls.
-%
-%       Each image view maintains its own physical aspect ratio.
-%       Changing a ratio does not unnecessarily resize a view
-%       that does not contain the corresponding dimension.
-%
-%       The layout separates image views to prevent overlap
-%       when orthogonal visualization is enabled.
-%
-%   7. DISPLAY SETTINGS
-%
-%       The image color limits can be modified interactively.
-%       All image views share the same colormap and display range.
-%
-%       Display adjustments do not modify the original data.
+%   5. PHYSICAL ASPECT RATIOS AND DISPLAY SETTINGS
+%       The X/Y/D ratio fields control each view's physical aspect ratio.
+%       The D field appears when orthogonal views are enabled. Each image
+%       retains its own CLim and colormap. NaN pixels reveal the specified
+%       axes background color. Display changes do not alter source data.
 %
 % EXAMPLES
 %
-%   Example 1: Basic 3D visualization
-%
-%       data = rand(256,512,100);
-%       fig = SliceViewerND(data);
+%   Example 1: Basic 3D viewer (image title defaults to variable name)
+%       volume = rand(256,512,100);
+%       fig = SliceViewerND(volume);
 %
 %   Example 2: Custom colormap and dimension names
-%
-%       data = rand(512,1024,200,10);
-%
-%       fig = SliceViewerND(data,[0 1],turbo(256), ...
-%           ["Depth","Time"],"4D Image Viewer");
+%       volume = rand(512,1024,200,10);
+%       fig = SliceViewerND(volume,[0 1],turbo(256), ...
+%           ["Depth","Time"],[],"4D Image Viewer");
 %
 %   Example 3: OCT volume with physical sample spacing
-%
-%       data = rand(512,1024,256);
-%
-%       dx = 5;  % micrometers/pixel
-%       dy = 5;
-%       dz = 2;
-%
-%       fig = SliceViewerND(data,[0 1],gray(256), ...
-%           "Depth","OCT Volume",[],"right",3,[dx dy dz]);
+%       volume = rand(512,1024,256);
+%       dx = 5; dy = 5; dz = 2;  % micrometers per pixel
+%       fig = SliceViewerND(volume,[0 1],gray(256),"Depth",[], ...
+%           "OCT Volume",[],[0.25 0.25 0.25],"right",3,[dx dy dz]);
 %
 %   Example 4: Higher-dimensional dataset
+%       volume = rand(256,512,100,20,5);
+%       fig = SliceViewerND(volume,[0 1],gray(256), ...
+%           ["Depth","Time","Repetition"],[],"5D Viewer",[], ...
+%           [0.25 0.25 0.25],"bottom",5,[1 1 2]);
 %
-%       data = rand(256,512,100,20,5);
+%   Example 5: Three synchronized images with independent display settings
+%       A = rand(128,128,40);
+%       B = 10*rand(100,120,35);
+%       C = 100*rand(80,90,20);
+%       fig = SliceViewerND({A,B,C}, ...
+%           {[0 1],[0 10],[0 100]}, ...
+%           {gray(256),turbo(256),hot(256)}, ...
+%           "Depth",["Structural","Angiography","Dynamics"], ...
+%           "Comparison",[],[0.2 0.2 0.2],"bottom",3,[1 1 1]);
 %
-%       fig = SliceViewerND(data,[0 1],gray(256), ...
-%           ["Depth","Time","Repetition"], ...
-%           "5D Viewer",[],"bottom",5,[1 1 2]);
-%
-%   Example 5: Keyboard navigation
-%
-%       data = rand(256,512,100);
-%       fig = SliceViewerND(data);
-%
-%       % Click a dimension slider and press the arrow keys
-%       % to navigate one slice at a time.
-%
-%       % Enable averaging and click its Window Position slider.
-%       % Use the arrow keys to shift the averaging window by
-%       % exactly one index.
-%
-%       % Enable Orthogonal Views and click the X or Y slider.
-%       % Use the arrow keys to move the cross-sectional location
-%       % by exactly one pixel.
+%   Example 6: Automatic names for a named cell-array variable
+%       datasets = {rand(64,64,10),rand(64,64,10)};
+%       fig = SliceViewerND(datasets);  % datasets{1}, datasets{2}
 %
 % NOTES
 %
-%   - The first two dimensions always represent Y and X.
-%   - Dimensions 3 through N support independent navigation.
-%   - Keyboard navigation supports dimension, averaging-window,
-%     and orthogonal X/Y location sliders.
-%   - Arrow keys change the selected slider value by one integer.
-%   - Slider positions and displayed indices remain synchronized.
-%   - Averaging ignores NaN values.
-%   - Physical ratios specify sample spacing, not image dimensions.
-%   - The orthogonal dimension D can be selected interactively.
-%   - The original input array is not modified.
-%   - Large datasets may require substantial memory.
+%   - The comparison grid has ceil(sqrt(nImages)) columns.
+%   - NaN padding may increase memory usage substantially for large arrays.
+%   - Averaging omits NaN values, including padded regions.
+%   - Physical ratios affect visualization only, not the underlying data.
+%   - Input arrays are not modified in the caller's workspace.
 %
 % AUTHOR AND VERSION INFORMATION
 %
 %   Author:       Tianhui (Cindy) Jie
-%   Date:         October 16, 2026
-%   Version:      1.1.0
+%   Date:         November 17, 2026
+%   Version:      1.2.0
 %   License:      GNU General Public License v3.0
 %
 %   Copyright (c) 2026 Tianhui (Cindy) Jie
@@ -296,78 +184,140 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, ...
 % AI ASSISTANCE
 %
 %   Developed by Tianhui (Cindy) Jie with assistance from
-%   OpenAI ChatGPT (GPT-6, October 16, 2026).
-%
-%   AI assistance included code development, debugging,
-%   optimization, user-interface design, and documentation.
-%
-%   The author directed development and is responsible for
-%   reviewing, validating, and maintaining the implementation.
+%   OpenAI ChatGPT (GPT-6, November 17, 2026).
+%   AI assistance included code development, debugging, optimization,
+%   user-interface design, and documentation. The author directed
+%   development and is responsible for reviewing and maintaining the code.
 %
 %   AI Tool Citation:
 %       OpenAI. (2026). ChatGPT (GPT-6) [Large language model].
 %       https://chatgpt.com/
 %
 % VERSION HISTORY
+%   v1.2.0 (2026-11-17)
+%       - Added comparison of any number of synchronized image arrays.
+%       - Added per-image color limits and colormaps.
+%       - Added automatic NaN padding and configurable NaN background colors.
+%       - Added custom image names and automatic input-variable naming.
+%       - Positioned image selector immediately to the left of CLim.
 %
 %   v1.1.0 (2026-10-16)
-%       - Added keyboard arrow navigation for all position sliders.
-%       - Automatically tracks the most recently selected slider.
-%       - Left/right arrow keys change slider values by exactly
-%         one integer per keypress.
-%       - Added keyboard navigation for dimension slice sliders.
-%       - Added keyboard navigation for averaging window-position
-%         sliders, preserving the averaging window width.
-%       - Added keyboard navigation for orthogonal X/Y location
-%         sliders, enabling one-pixel cross-sectional movement.
-%       - Synchronized slider-thumb positions with selected indices.
-%       - Automatically updates images, averaging intervals, and
-%         position indicators after keyboard navigation.
-%       - Constrained navigation to valid slider limits.
+%       - Added keyboard navigation for slice, averaging-window, and
+%         orthogonal X/Y position sliders in one-index steps.
+%       - Tracked the most recently selected slider and synchronized
+%         slider positions, displayed indices, and indicator lines.
 %
 %   v1.0.0 (2026-10-16)
-%       - Initial release.
-%       - N-dimensional slice navigation and averaging.
-%       - Movable averaging windows.
-%       - Linked orthogonal XY, X-D, and Y-D views.
-%       - Physical aspect-ratio controls.
-%       - Independent image scaling and nonoverlapping layout.
-%       - Interactive display settings and orthogonal data caching.
+%       - Initial N-dimensional viewer with slice navigation, averaging,
+%         movable averaging windows, orthogonal views, physical aspect
+%         ratios, interactive display settings, and orthogonal caching.
 %
 % SEE ALSO
 %   imagesc, sliceViewer, uifigure, uiaxes, uislider, uigridlayout,
 %   daspect, caxis, clim, colormap, mean
 %
-
     arguments
-        data {mustBeNumeric,mustBeReal}
-        displayRange (1,2) double = [min(data(:)), max(data(:))]
+        data
+        displayRange = []
         cmap = gray(256)
         dimNames string = string.empty
+        imageNames = string.empty
         figName (1,1) string = "ND Slice Viewer"
         fig = []
+        nanColor = [0.25 0.25 0.25]
         sliderPosition (1,1) string {mustBeMember(sliderPosition,["bottom","right"])} = "bottom"
         nDimensions (1,1) double = NaN
         dimensionRatio (1,3) double {mustBePositive,mustBeFinite} = [1 1 1]
     end
 
-    if isempty(data)
-        error('sliceViewerND:EmptyData','data must not be empty.');
+    % Capture the caller variable name before wrapping numeric input in a cell.
+    inputVarName = string(inputname(1));
+    % Comparison mode: cell arrays of independently scaled datasets.
+    if ~iscell(data), data = {data}; end
+    nImages = numel(data);
+    if isempty(imageNames)
+        imageNames = "Image " + string(1:nImages);
+        if strlength(inputVarName)>0
+            if nImages==1
+                imageNames = inputVarName;
+            else
+                imageNames = inputVarName + "{" + string(1:nImages) + "}";
+            end
+        end
+    else
+        imageNames = reshape(string(imageNames),1,[]);
+        if numel(imageNames)~=nImages || any(ismissing(imageNames)) || ...
+                any(strlength(strtrim(imageNames))==0)
+            error('SliceViewerND:ImageNames', ...
+                'imageNames must contain one nonempty name per image.');
+        end
     end
-    if any(~isfinite(displayRange)) || displayRange(1)>=displayRange(2)
-        error('sliceViewerND:CLim','displayRange must be finite and increasing.');
+    if nImages<1 || any(cellfun(@(a) ~isnumeric(a) || ~isreal(a) || isempty(a),data))
+        error('SliceViewerND:Data','Provide nonempty real numeric arrays.');
     end
     if isnan(nDimensions)
-        nDimensions = max(3,ndims(data));
+        nDimensions = max([3,cellfun(@ndims,data)]);
     end
-    if ~isfinite(nDimensions) || nDimensions~=fix(nDimensions) || ...
-            nDimensions<max(3,ndims(data))
-        error('sliceViewerND:Dimensions','Invalid nDimensions.');
+    if ~isscalar(nDimensions) || ~isfinite(nDimensions) || nDimensions~=fix(nDimensions) || ...
+            nDimensions<max([3,cellfun(@ndims,data)])
+        error('SliceViewerND:Dimensions','Invalid nDimensions.');
     end
+    allSizes = ones(nImages,nDimensions);
+    for k=1:nImages
+        for d=1:nDimensions, allSizes(k,d)=size(data{k},d); end
+    end
+    commonSize = max(allSizes,[],1);
     nSliders = nDimensions-2;
-    nY = size(data,1);
-    nX = size(data,2);
-    nDims = arrayfun(@(d) size(data,d+2),1:nSliders);
+    nY = commonSize(1); nX = commonSize(2);
+    nDims = commonSize(3:end);
+    if isempty(displayRange)
+        ranges = zeros(nImages,2);
+        for k=1:nImages
+            finiteValues = double(data{k}(isfinite(data{k})));
+            if isempty(finiteValues), ranges(k,:)=[0 1];
+            else
+                ranges(k,:)=[min(finiteValues) max(finiteValues)];
+                if ranges(k,1)==ranges(k,2), ranges(k,:)=ranges(k,:)+[-0.5 0.5]; end
+            end
+        end
+    elseif isnumeric(displayRange) && isequal(size(displayRange),[1 2])
+        ranges = repmat(double(displayRange),nImages,1);
+    elseif isnumeric(displayRange) && isequal(size(displayRange),[nImages 2])
+        ranges = double(displayRange);
+    elseif iscell(displayRange) && numel(displayRange)==nImages
+        ranges = vertcat(displayRange{:});
+    else
+        error('SliceViewerND:CLim','Provide [min max], an N-by-2 matrix, or N cells.');
+    end
+    if any(~isfinite(ranges(:))) || any(ranges(:,1)>=ranges(:,2))
+        error('SliceViewerND:CLim','Every display range must be finite and increasing.');
+    end
+    if ~iscell(cmap), cmap = {cmap}; end
+    if numel(cmap)==1, cmap=repmat(cmap,1,nImages); end
+    if numel(cmap)~=nImages, error('SliceViewerND:Colormap','Provide one colormap or one per dataset.'); end
+    for k=1:nImages
+        if ischar(cmap{k}) || isstring(cmap{k}), cmap{k}=feval(char(cmap{k}),256); end
+        if ~isnumeric(cmap{k}) || size(cmap{k},2)~=3 || any(~isfinite(cmap{k}(:))) || ...
+                any(cmap{k}(:)<0 | cmap{k}(:)>1)
+            error('SliceViewerND:Colormap','Colormaps must be M-by-3 RGB arrays.');
+        end
+    end
+    if iscell(nanColor), nanColors=vertcat(nanColor{:});
+    else, nanColors=nanColor; end
+    if isequal(size(nanColors),[1 3]), nanColors=repmat(nanColors,nImages,1); end
+    if ~isequal(size(nanColors),[nImages 3]) || any(~isfinite(nanColors(:))) || ...
+            any(nanColors(:)<0 | nanColors(:)>1)
+        error('SliceViewerND:NaNColor','NaN colors must be RGB triplets in [0,1].');
+    end
+    % Pad each dataset once, along every dimension, without changing inputs.
+    for k=1:nImages
+        if ~isequal(allSizes(k,:),commonSize)
+            padded = nan(commonSize);
+            subs = arrayfun(@(v) 1:v,allSizes(k,:),'UniformOutput',false);
+            padded(subs{:}) = double(data{k});
+            data{k} = padded;
+        end
+    end
     if isempty(dimNames)
         dimNames = "Dimension " + string(3:nDimensions);
     else
@@ -384,9 +334,10 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, ...
     orthDim = 1;
     xPos = max(1,round(nX/2));
     yPos = max(1,round(nY/2));
-    currentDisplayRange = displayRange;
+    currentDisplayRange = ranges;
+    selectedImage = 1;
     currentDimensionRatio = dimensionRatio;
-    cachedOrthVol = [];
+    cachedOrthVol = cell(1,nImages);
     cachedOrthDim = 0;
     activeSlider = [];  % Last operated slider (slice, averaging window, X or Y).
     activeSliderKind = '';
@@ -401,11 +352,11 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, ...
             controlsHeight = 145*nSliders+10*max(0,nSliders-1);
             figHeight = max(750,min(1100,controlsHeight+450));
             plotHeight = max(240,figHeight-controlsHeight-110);
-            figWidth = max(980,min(1750,round(plotHeight*imageRatio+160)));
+            figWidth = max(980,min(1900,round(plotHeight*imageRatio*min(nImages,3)+160)));
         else
             figHeight = max(700,min(1100,round(620/max(imageRatio,0.6)+100)));
             plotHeight = figHeight-110;
-            figWidth = max(1050,min(1750,round(plotHeight*imageRatio+530)));
+            figWidth = max(1050,min(1900,round(plotHeight*imageRatio*min(nImages,3)+530)));
         end
         figSize = [figWidth figHeight];
         fig = uifigure('Name',figName,'Position',[100 100 figSize]);
@@ -423,11 +374,11 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, ...
     outerGL.Padding = [12 12 12 12];
     outerGL.RowSpacing = 8;
 
-    toolbarGL = uigridlayout(outerGL,[1 6]);
+    toolbarGL = uigridlayout(outerGL,[1 7]);
     toolbarGL.Layout.Row = 1;
     toolbarGL.Layout.Column = 1;
     toolbarGL.RowHeight = {'1x'};
-    toolbarGL.ColumnWidth = {150,85,160,'1x',245,320};
+    toolbarGL.ColumnWidth = {150,85,145,'1x',155,220,260};
     toolbarGL.ColumnSpacing = 7;
     toolbarGL.Padding = [0 0 0 0];
 
@@ -443,21 +394,25 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, ...
         'HorizontalAlignment','left','Visible','off');
     mainPositionLabel.Layout.Column = 4;
 
+    imageSelector = uidropdown(toolbarGL,'Items',cellstr(imageNames), ...
+        'ItemsData',1:nImages,'Value',1);
+    imageSelector.Layout.Column = 5;
+
     climGL = uigridlayout(toolbarGL,[1 4]);
-    climGL.Layout.Column = 5;
+    climGL.Layout.Column = 6;
     climGL.ColumnWidth = {45,'1x',20,'1x'};
     climGL.RowHeight = {'1x'};
     climGL.Padding = [0 0 0 0];
     climGL.ColumnSpacing = 4;
     uilabel(climGL,'Text','CLim:','HorizontalAlignment','right');
-    displayMinField = uieditfield(climGL,'numeric','Value',displayRange(1), ...
+    displayMinField = uieditfield(climGL,'numeric','Value',ranges(1,1), ...
         'ValueDisplayFormat','%.5g');
     uilabel(climGL,'Text','to','HorizontalAlignment','center');
-    displayMaxField = uieditfield(climGL,'numeric','Value',displayRange(2), ...
+    displayMaxField = uieditfield(climGL,'numeric','Value',ranges(1,2), ...
         'ValueDisplayFormat','%.5g');
 
     ratioGL = uigridlayout(toolbarGL,[1 7]);
-    ratioGL.Layout.Column = 6;
+    ratioGL.Layout.Column = 7;
     ratioGL.RowHeight = {'1x'};
     ratioGL.ColumnWidth = {45,16,'1x',16,'1x',0,0};
     ratioGL.Padding = [0 0 0 0];
@@ -472,6 +427,7 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, ...
     ratioDLabel = uilabel(ratioGL,'Text','D','HorizontalAlignment','center','Visible','off');
     ratioDField = uieditfield(ratioGL,'numeric','Value',dimensionRatio(3), ...
         'Limits',[eps Inf],'ValueDisplayFormat','%.5g','Visible','off');
+
 
     if sliderPosition=="bottom"
         workspaceGL = uigridlayout(outerGL,[2 1]);
@@ -502,24 +458,39 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, ...
     imageAreaGL.RowSpacing = 0;
     imageAreaGL.ColumnSpacing = 0;
 
-    imageGL = uigridlayout(imageAreaGL,[2 2]);
-    imageGL.Layout.Row = 1;
-    imageGL.Layout.Column = 1;
-    imageGL.RowHeight = {'1x',0};
-    imageGL.ColumnWidth = {'1x',0};
-    imageGL.RowSpacing = 0;
-    imageGL.ColumnSpacing = 0;
-    imageGL.Padding = [0 0 0 0];
+    tileColumns = ceil(sqrt(nImages));
+    tileRows = ceil(nImages/tileColumns);
+    compareGL = uigridlayout(imageAreaGL,[tileRows tileColumns]);
+    compareGL.Layout.Row = 1; compareGL.Layout.Column = 1;
+    compareGL.RowHeight = repmat({'1x'},1,tileRows);
+    compareGL.ColumnWidth = repmat({'1x'},1,tileColumns);
+    compareGL.Padding = [0 0 0 0];
+    compareGL.RowSpacing = 8; compareGL.ColumnSpacing = 8;
+    imageGL = gobjects(1,nImages);
+    axMain = gobjects(1,nImages); axXD = gobjects(1,nImages); axYD = gobjects(1,nImages);
+    hMain = gobjects(1,nImages); hXD = gobjects(1,nImages); hYD = gobjects(1,nImages);
+    hVertical = gobjects(1,nImages); hHorizontal = gobjects(1,nImages);
+    hMainXD = gobjects(nImages,2); hMainYD = gobjects(nImages,2);
+    hXIndicatorXD = gobjects(1,nImages); hYIndicatorYD = gobjects(1,nImages);
+    for im=1:nImages
+    imageGL(im) = uigridlayout(compareGL,[2 2]);
+    imageGL(im).Layout.Row = ceil(im/tileColumns);
+    imageGL(im).Layout.Column = mod(im-1,tileColumns)+1;
+    imageGL(im).RowHeight = {'1x',0};
+    imageGL(im).ColumnWidth = {'1x',0};
+    imageGL(im).RowSpacing = 0;
+    imageGL(im).ColumnSpacing = 0;
+    imageGL(im).Padding = [0 0 0 0];
 
     % Separate clipped containers prevent axes, labels, and plot boxes
     % from painting into neighboring panes during a layout transition.
-    mainPane = uipanel(imageGL,'BorderType','none');
+    mainPane = uipanel(imageGL(im),'BorderType','none');
     mainPane.Layout.Row = 1;
     mainPane.Layout.Column = 1;
-    xdPane = uipanel(imageGL,'BorderType','none');
+    xdPane = uipanel(imageGL(im),'BorderType','none');
     xdPane.Layout.Row = 2;
     xdPane.Layout.Column = 1;
-    ydPane = uipanel(imageGL,'BorderType','none');
+    ydPane = uipanel(imageGL(im),'BorderType','none');
     ydPane.Layout.Row = 1;
     ydPane.Layout.Column = 2;
 
@@ -530,59 +501,68 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, ...
     ydPaneGL = uigridlayout(ydPane,[1 1], ...
         'Padding',[12 12 12 12],'RowHeight',{'1x'},'ColumnWidth',{'1x'});
 
-    axMain = uiaxes(mainPaneGL);
+    axMain(im) = uiaxes(mainPaneGL);
     initialSubs = repmat({1},1,nDimensions);
     initialSubs(1:2) = {':',':'};
-    hMain = imagesc(axMain,reshape(data(initialSubs{:}),nY,nX));
-    axMain.XTick = [];
-    axMain.YTick = [];
-    axMain.XLim = [0.5 nX+0.5];
-    axMain.YLim = [0.5 nY+0.5];
-    axMain.XLimMode = 'manual';
-    axMain.YLimMode = 'manual';
-    colormap(axMain,cmap);
-    clim(axMain,currentDisplayRange);
-    colorbar(axMain);
+    hMain(im) = imagesc(axMain(im),reshape(data{im}(initialSubs{:}),nY,nX));
+    axMain(im).XTick = [];
+    axMain(im).YTick = [];
+    axMain(im).XLim = [0.5 nX+0.5];
+    axMain(im).YLim = [0.5 nY+0.5];
+    axMain(im).XLimMode = 'manual';
+    axMain(im).YLimMode = 'manual';
+    colormap(axMain(im),cmap{im});
+    clim(axMain(im),currentDisplayRange(im,:));
+    axMain(im).Color = nanColors(im,:);
+    hMain(im).AlphaData = double(~isnan(hMain(im).CData));
+    hMain(im).AlphaDataMapping = 'none';
+    colorbar(axMain(im));
 
-    axXD = uiaxes(xdPaneGL);
-    hXD = imagesc(axXD,zeros(nDims(1),nX));
-    colormap(axXD,cmap);
-    clim(axXD,currentDisplayRange);
-    axXD.Visible = 'off';
+    axXD(im) = uiaxes(xdPaneGL);
+    hXD(im) = imagesc(axXD(im),zeros(nDims(1),nX));
+    colormap(axXD(im),cmap{im});
+    clim(axXD(im),currentDisplayRange(im,:));
+    axXD(im).Color = nanColors(im,:);
+    hXD(im).AlphaDataMapping = 'none';
+    axXD(im).Visible = 'off';
 
-    axYD = uiaxes(ydPaneGL);
-    hYD = imagesc(axYD,zeros(nY,nDims(1)));
-    colormap(axYD,cmap);
-    clim(axYD,currentDisplayRange);
-    axYD.Visible = 'off';
+    axYD(im) = uiaxes(ydPaneGL);
+    hYD(im) = imagesc(axYD(im),zeros(nY,nDims(1)));
+    colormap(axYD(im),cmap{im});
+    clim(axYD(im),currentDisplayRange(im,:));
+    axYD(im).Color = nanColors(im,:);
+    hYD(im).AlphaDataMapping = 'none';
+    axYD(im).Visible = 'off';
 
-    hold(axMain,'on');
-    hVertical = line(axMain,[xPos xPos],[0.5 nY+0.5], ...
+    hold(axMain(im),'on');
+    hVertical(im) = line(axMain(im),[xPos xPos],[0.5 nY+0.5], ...
         'Color','g','LineWidth',1.5,'Visible','off','HitTest','off');
-    hHorizontal = line(axMain,[0.5 nX+0.5],[yPos yPos], ...
+    hHorizontal(im) = line(axMain(im),[0.5 nX+0.5],[yPos yPos], ...
         'Color','r','LineWidth',1.5,'Visible','off','HitTest','off');
-    hold(axMain,'off');
+    hold(axMain(im),'off');
 
-    hMainXD = gobjects(1,2);
-    hMainYD = gobjects(1,2);
-    hold(axXD,'on');
+    
+    
+    hold(axXD(im),'on');
     for k=1:2
-        hMainXD(k) = line(axXD,[0.5 nX+0.5],[1 1], ...
+        hMainXD(im,k) = line(axXD(im),[0.5 nX+0.5],[1 1], ...
             'Color','y','LineWidth',1.5,'LineStyle','--', ...
             'Visible','off','HitTest','off');
     end
-    hXIndicatorXD = line(axXD,[xPos xPos],[0.5 nDims(1)+0.5], ...
+    hXIndicatorXD(im) = line(axXD(im),[xPos xPos],[0.5 nDims(1)+0.5], ...
         'Color','g','LineWidth',1.5,'Visible','off','HitTest','off');
-    hold(axXD,'off');
-    hold(axYD,'on');
+    hold(axXD(im),'off');
+    hold(axYD(im),'on');
     for k=1:2
-        hMainYD(k) = line(axYD,[1 1],[0.5 nY+0.5], ...
+        hMainYD(im,k) = line(axYD(im),[1 1],[0.5 nY+0.5], ...
             'Color','y','LineWidth',1.5,'LineStyle','--', ...
             'Visible','off','HitTest','off');
     end
-    hYIndicatorYD = line(axYD,[0.5 nDims(1)+0.5],[yPos yPos], ...
+    hYIndicatorYD(im) = line(axYD(im),[0.5 nDims(1)+0.5],[yPos yPos], ...
         'Color','r','LineWidth',1.5,'Visible','off','HitTest','off');
-    hold(axYD,'off');
+    hold(axYD(im),'off');
+
+    end % image panels
 
     orthControlsGL = uigridlayout(imageAreaGL,[2 2]);
     if sliderPosition=="bottom"
@@ -714,25 +694,31 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, ...
     ratioXField.ValueChangedFcn = @(~,~) updateDimensionRatios();
     ratioYField.ValueChangedFcn = @(~,~) updateDimensionRatios();
     ratioDField.ValueChangedFcn = @(~,~) updateDimensionRatios();
+    imageSelector.ValueChangedFcn = @(~,event) selectImage(event.Value);
 
     fig.WindowKeyPressFcn = @sliceKeyboardCallback;
 
     updateImages();
     updateDimensionRatios();
 
+    function selectImage(value)
+        selectedImage = value;
+        displayMinField.Value = currentDisplayRange(value,1);
+        displayMaxField.Value = currentDisplayRange(value,2);
+    end
+
     function updateDisplayRange()
         newLimits = [displayMinField.Value,displayMaxField.Value];
         if any(~isfinite(newLimits)) || newLimits(1)>=newLimits(2)
-            displayMinField.Value = currentDisplayRange(1);
-            displayMaxField.Value = currentDisplayRange(2);
-            uialert(fig,'CLim minimum must be smaller than its maximum.', ...
-                'Invalid Display Range');
+            displayMinField.Value = currentDisplayRange(selectedImage,1);
+            displayMaxField.Value = currentDisplayRange(selectedImage,2);
+            uialert(fig,'CLim minimum must be smaller than its maximum.','Invalid Display Range');
             return;
         end
-        currentDisplayRange = newLimits;
-        clim(axMain,newLimits);
-        clim(axXD,newLimits);
-        clim(axYD,newLimits);
+        currentDisplayRange(selectedImage,:) = newLimits;
+        clim(axMain(selectedImage),newLimits);
+        clim(axXD(selectedImage),newLimits);
+        clim(axYD(selectedImage),newLimits);
     end
 
     function updateDimensionRatios()
@@ -750,9 +736,11 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, ...
         % Do not resize shared grid cells when a ratio changes.
         normalizedRatios = ratios;
         % DataAspectRatio is [horizontal-unit, vertical-unit, 1].
-        daspect(axMain,[normalizedRatios(1),normalizedRatios(2),1]); % XY
-        daspect(axXD,  [normalizedRatios(1),normalizedRatios(3),1]); % X-D
-        daspect(axYD,  [normalizedRatios(3),normalizedRatios(2),1]); % Y-D
+        for im=1:nImages
+            daspect(axMain(im),[normalizedRatios(1),normalizedRatios(2),1]);
+            daspect(axXD(im),[normalizedRatios(1),normalizedRatios(3),1]);
+            daspect(axYD(im),[normalizedRatios(3),normalizedRatios(2),1]);
+        end
         % Keep pane allocations fixed; only update each axes aspect.
     end
 
@@ -761,12 +749,14 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, ...
         % Changing Y must not resize the X-D pane; changing X must not
         % resize the Y-D pane. Physical scaling is enforced separately
         % by daspect() on each axes, not by coupled grid weights.
+        for im=1:nImages
         if orthEnabled
-            imageGL.RowHeight = {'1x','0.55x'};
-            imageGL.ColumnWidth = {'1x','0.55x'};
+            imageGL(im).RowHeight = {'1x','0.55x'};
+            imageGL(im).ColumnWidth = {'1x','0.55x'};
         else
-            imageGL.RowHeight = {'1x',0};
-            imageGL.ColumnWidth = {'1x',0};
+            imageGL(im).RowHeight = {'1x',0};
+            imageGL(im).ColumnWidth = {'1x',0};
+        end
         end
     end
 
@@ -896,6 +886,7 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, ...
         orthEnabled = logical(value);
         ratioDLabel.Visible = matlab.lang.OnOffSwitchState(orthEnabled);
         ratioDField.Visible = matlab.lang.OnOffSwitchState(orthEnabled);
+        for im=1:nImages
         if orthEnabled
             % Maintain enough physical room for three independent image panes.
             % MATLAB otherwise may draw axes decorations over adjacent panes.
@@ -914,15 +905,14 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, ...
             ratioGL.ColumnWidth = {45,16,'1x',16,'1x',16,'1x'};
             orthControlsGL.Visible = 'on';
             mainPositionLabel.Visible = 'on';
-            hVertical.Visible = 'on';
-            hHorizontal.Visible = 'on';
-            updatePhysicalLayout();
+            hVertical(im).Visible = 'on';
+            hHorizontal(im).Visible = 'on';
             % Settle grid dimensions before exposing orthogonal axes.
             drawnow;
-            axXD.Visible = 'on';
-            axYD.Visible = 'on';
-            imageGL.RowSpacing = 24;
-            imageGL.ColumnSpacing = 24;
+            axXD(im).Visible = 'on';
+            axYD(im).Visible = 'on';
+            imageGL(im).RowSpacing = 24;
+            imageGL(im).ColumnSpacing = 24;
             if sliderPosition=="bottom"
                 imageAreaGL.ColumnWidth = {'1x',250};
                 imageAreaGL.ColumnSpacing = 8;
@@ -934,16 +924,16 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, ...
             ratioGL.ColumnWidth = {45,16,'1x',16,'1x',0,0};
             orthControlsGL.Visible = 'off';
             mainPositionLabel.Visible = 'off';
-            hVertical.Visible = 'off';
-            hHorizontal.Visible = 'off';
-            axXD.Visible = 'off';
-            axYD.Visible = 'off';
-            hXIndicatorXD.Visible = 'off';
-            hYIndicatorYD.Visible = 'off';
-            imageGL.RowHeight = {'1x',0};
-            imageGL.ColumnWidth = {'1x',0};
-            imageGL.RowSpacing = 0;
-            imageGL.ColumnSpacing = 0;
+            hVertical(im).Visible = 'off';
+            hHorizontal(im).Visible = 'off';
+            axXD(im).Visible = 'off';
+            axYD(im).Visible = 'off';
+            hXIndicatorXD(im).Visible = 'off';
+            hYIndicatorYD(im).Visible = 'off';
+            imageGL(im).RowHeight = {'1x',0};
+            imageGL(im).ColumnWidth = {'1x',0};
+            imageGL(im).RowSpacing = 0;
+            imageGL(im).ColumnSpacing = 0;
             if sliderPosition=="bottom"
                 imageAreaGL.ColumnWidth = {'1x',0};
                 imageAreaGL.ColumnSpacing = 0;
@@ -952,6 +942,8 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, ...
                 imageAreaGL.RowSpacing = 0;
             end
         end
+        end % panels
+        updatePhysicalLayout();
         updateImages();
         % Finish layout after visibility and grid changes have settled.
         drawnow limitrate;
@@ -976,7 +968,7 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, ...
         updateImages();
     end
 
-    function img = extractData(excludeDim)
+    function img = extractData(excludeDim,im)
         subs = repmat({1},1,nDimensions);
         subs(1:2) = {':',':'};
         for d=1:nSliders
@@ -988,7 +980,7 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, ...
                 subs{d+2} = idx(d);
             end
         end
-        img = data(subs{:});
+        img = data{im}(subs{:});
         for d=1:nSliders
             if avgEnabled(d) && d~=excludeDim
                 img = mean(img,d+2,'omitnan');
@@ -1005,12 +997,13 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, ...
     end
 
     function updateMainPositionIndicators()
+        for im=1:nImages
         if ~orthEnabled
             for k=1:2
-                hMainXD(k).Visible = 'off';
-                hMainYD(k).Visible = 'off';
+                hMainXD(im,k).Visible = 'off';
+                hMainYD(im,k).Visible = 'off';
             end
-            return;
+            continue;
         end
         if avgEnabled(orthDim)
             positions = avgRanges(orthDim,:);
@@ -1022,88 +1015,89 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, ...
         for k=1:2
             if k<=nLines
                 pos = positions(k);
-                hMainXD(k).XData = [0.5 nX+0.5];
-                hMainXD(k).YData = [pos pos];
-                hMainYD(k).XData = [pos pos];
-                hMainYD(k).YData = [0.5 nY+0.5];
-                hMainXD(k).Visible = 'on';
-                hMainYD(k).Visible = 'on';
+                hMainXD(im,k).XData = [0.5 nX+0.5];
+                hMainXD(im,k).YData = [pos pos];
+                hMainYD(im,k).XData = [pos pos];
+                hMainYD(im,k).YData = [0.5 nY+0.5];
+                hMainXD(im,k).Visible = 'on';
+                hMainYD(im,k).Visible = 'on';
             else
-                hMainXD(k).Visible = 'off';
-                hMainYD(k).Visible = 'off';
+                hMainXD(im,k).Visible = 'off';
+                hMainYD(im,k).Visible = 'off';
             end
         end
+        end % panels
     end
 
     function updateOrthogonalIntersectionIndicators()
+        for im=1:nImages
         if ~orthEnabled
-            hXIndicatorXD.Visible = 'off';
-            hYIndicatorYD.Visible = 'off';
-            return;
+            hXIndicatorXD(im).Visible = 'off';
+            hYIndicatorYD(im).Visible = 'off';
+            continue;
         end
-        hXIndicatorXD.XData = [xPos xPos];
-        hXIndicatorXD.YData = [0.5 nDims(orthDim)+0.5];
-        hXIndicatorXD.Visible = 'on';
-        hYIndicatorYD.XData = [0.5 nDims(orthDim)+0.5];
-        hYIndicatorYD.YData = [yPos yPos];
-        hYIndicatorYD.Visible = 'on';
+        hXIndicatorXD(im).XData = [xPos xPos];
+        hXIndicatorXD(im).YData = [0.5 nDims(orthDim)+0.5];
+        hXIndicatorXD(im).Visible = 'on';
+        hYIndicatorYD(im).XData = [0.5 nDims(orthDim)+0.5];
+        hYIndicatorYD(im).YData = [yPos yPos];
+        hYIndicatorYD(im).Visible = 'on';
+        end % panels
     end
 
     function updateImages(recomputeOrth)
         if nargin<1, recomputeOrth = true; end
-        % Position-only changes reuse the already extracted orthogonal volume.
-        if recomputeOrth || isempty(cachedOrthVol)
-            hMain.CData = extractData(0);
-        end
         titleParts = strings(1,nSliders);
         for d=1:nSliders
             if avgEnabled(d)
-                labels(d).Text = sprintf('%s: Average (%d:%d)', ...
-                    dimNames(d),avgRanges(d,1),avgRanges(d,2));
-                titleParts(d) = sprintf('%s: Avg [%d:%d]', ...
-                    dimNames(d),avgRanges(d,1),avgRanges(d,2));
+                labels(d).Text = sprintf('%s: Average (%d:%d)',dimNames(d),avgRanges(d,1),avgRanges(d,2));
+                titleParts(d) = sprintf('%s: Avg [%d:%d]',dimNames(d),avgRanges(d,1),avgRanges(d,2));
             else
-                labels(d).Text = sprintf('%s: %d / %d', ...
-                    dimNames(d),idx(d),nDims(d));
+                labels(d).Text = sprintf('%s: %d / %d',dimNames(d),idx(d),nDims(d));
                 titleParts(d) = sprintf('%s: %d',dimNames(d),idx(d));
             end
         end
-        title(axMain,strjoin(titleParts,' | '));
         xLabel.Text = sprintf('X: %d / %d',xPos,nX);
         yLabel.Text = sprintf('Y: %d / %d',yPos,nY);
-        hVertical.XData = [xPos xPos];
-        hVertical.YData = [0.5 nY+0.5];
-        hHorizontal.XData = [0.5 nX+0.5];
-        hHorizontal.YData = [yPos yPos];
         if avgEnabled(orthDim)
-            mainPositionLabel.Text = sprintf('Main: %s [%d:%d] (avg)', ...
-                dimNames(orthDim),avgRanges(orthDim,1),avgRanges(orthDim,2));
+            mainPositionLabel.Text = sprintf('Main: %s [%d:%d] (avg)',dimNames(orthDim),avgRanges(orthDim,1),avgRanges(orthDim,2));
         else
-            mainPositionLabel.Text = sprintf('Main: %s = %d', ...
-                dimNames(orthDim),idx(orthDim));
+            mainPositionLabel.Text = sprintf('Main: %s = %d',dimNames(orthDim),idx(orthDim));
         end
-        if orthEnabled
-            if recomputeOrth || isempty(cachedOrthVol) || cachedOrthDim~=orthDim
-                cachedOrthVol = extractData(orthDim);
-                cachedOrthDim = orthDim;
+        for im=1:nImages
+            if recomputeOrth || isempty(cachedOrthVol{im})
+                img = extractData(0,im);
+                hMain(im).CData = img;
+                hMain(im).AlphaData = double(~isnan(img));
             end
-            vol = cachedOrthVol;
-            hXD.CData = reshape(permute(vol(yPos,:,:),[3 2 1]), ...
-                nDims(orthDim),nX);
-            hYD.CData = reshape(vol(:,xPos,:),nY,nDims(orthDim));
-            hXD.XData = [1 nX];
-            hXD.YData = [1 nDims(orthDim)];
-            hYD.XData = [1 nDims(orthDim)];
-            hYD.YData = [1 nY];
-            axXD.XLim = [0.5 nX+0.5];
-            axXD.YLim = [0.5 nDims(orthDim)+0.5];
-            axYD.XLim = [0.5 nDims(orthDim)+0.5];
-            axYD.YLim = [0.5 nY+0.5];
-            title(axXD,sprintf('X-%s | Y = %d',dimNames(orthDim),yPos));
-            title(axYD,sprintf('Y-%s | X = %d',dimNames(orthDim),xPos));
-            xlabel(axXD,'X'); ylabel(axXD,dimNames(orthDim));
-            xlabel(axYD,dimNames(orthDim)); ylabel(axYD,'Y');
+            title(axMain(im),sprintf('%s | %s',imageNames(im),strjoin(titleParts,' | ')), ...
+                'Interpreter','none');
+            hVertical(im).XData = [xPos xPos];
+            hVertical(im).YData = [0.5 nY+0.5];
+            hHorizontal(im).XData = [0.5 nX+0.5];
+            hHorizontal(im).YData = [yPos yPos];
+            if orthEnabled
+                if recomputeOrth || isempty(cachedOrthVol{im}) || cachedOrthDim~=orthDim
+                    cachedOrthVol{im} = extractData(orthDim,im);
+                end
+                vol = cachedOrthVol{im};
+                xd = reshape(permute(vol(yPos,:,:),[3 2 1]),nDims(orthDim),nX);
+                yd = reshape(vol(:,xPos,:),nY,nDims(orthDim));
+                hXD(im).CData = xd; hXD(im).AlphaData = double(~isnan(xd));
+                hYD(im).CData = yd; hYD(im).AlphaData = double(~isnan(yd));
+                hXD(im).XData = [1 nX]; hXD(im).YData = [1 nDims(orthDim)];
+                hYD(im).XData = [1 nDims(orthDim)]; hYD(im).YData = [1 nY];
+                axXD(im).XLim = [0.5 nX+0.5];
+                axXD(im).YLim = [0.5 nDims(orthDim)+0.5];
+                axYD(im).XLim = [0.5 nDims(orthDim)+0.5];
+                axYD(im).YLim = [0.5 nY+0.5];
+                title(axXD(im),sprintf('X-%s | Y = %d',dimNames(orthDim),yPos));
+                title(axYD(im),sprintf('Y-%s | X = %d',dimNames(orthDim),xPos));
+                xlabel(axXD(im),'X'); ylabel(axXD(im),dimNames(orthDim));
+                xlabel(axYD(im),dimNames(orthDim)); ylabel(axYD(im),'Y');
+            end
         end
+        cachedOrthDim = orthDim;
         updateMainPositionIndicators();
         updateOrthogonalIntersectionIndicators();
     end
