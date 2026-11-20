@@ -114,7 +114,12 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
 %         X-D - Cross-section at selected Y
 %         Y-D - Cross-section at selected X
 %       Choose D using the Dimension dropdown. X and Y sliders control
-%       cross-sectional positions; indicator lines show intersections and
+%       cross-sectional positions. Each has an independent Average toggle,
+%       inclusive Start/End range, and movable averaging-window slider.
+%       Averaging Y produces an averaged X-D cross-section; averaging X
+%       produces an averaged Y-D cross-section. The main XY image remains
+%       unaveraged along X and Y. Window sliders support arrow-key stepping.
+%       Cross-sectional positions; indicator lines show intersections and
 %       the main slice or averaging interval in the orthogonal views.
 %
 %   5. PHYSICAL ASPECT RATIOS AND DISPLAY SETTINGS
@@ -171,8 +176,8 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
 % AUTHOR AND VERSION INFORMATION
 %
 %   Author:       Tianhui (Cindy) Jie
-%   Date:         November 17, 2026
-%   Version:      1.2.0
+%   Date:         November 20, 2026
+%   Version:      1.2.1
 %   License:      GNU General Public License v3.0
 %
 %   Copyright (c) 2026 Tianhui (Cindy) Jie
@@ -194,6 +199,13 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
 %       https://chatgpt.com/
 %
 % VERSION HISTORY
+%   v1.2.1 (2026-11-20)
+%       - Added independent X and Y averaging in orthogonal views, with
+%         separate range fields and movable averaging-window sliders.
+%       - Arranged X and Y orthogonal controls side by side.
+%       - Added keyboard stepping for X/Y averaging windows.
+%       - Added averaging-range indicators and updated cross-section titles.
+%       - Made red and green intersection indicators dashed to match yellow.
 %   v1.2.0 (2026-11-17)
 %       - Added comparison of any number of synchronized image arrays.
 %       - Added per-image color limits and colormaps.
@@ -334,6 +346,8 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
     orthDim = 1;
     xPos = max(1,round(nX/2));
     yPos = max(1,round(nY/2));
+    xyAvgEnabled = false(1,2); % [X Y]
+    xyAvgRanges = [1 nX; 1 nY];
     currentDisplayRange = ranges;
     selectedImage = 1;
     currentDimensionRatio = dimensionRatio;
@@ -470,6 +484,7 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
     axMain = gobjects(1,nImages); axXD = gobjects(1,nImages); axYD = gobjects(1,nImages);
     hMain = gobjects(1,nImages); hXD = gobjects(1,nImages); hYD = gobjects(1,nImages);
     hVertical = gobjects(1,nImages); hHorizontal = gobjects(1,nImages);
+    hVerticalEnd = gobjects(1,nImages); hHorizontalEnd = gobjects(1,nImages);
     hMainXD = gobjects(nImages,2); hMainYD = gobjects(nImages,2);
     hXIndicatorXD = gobjects(1,nImages); hYIndicatorYD = gobjects(1,nImages);
     for im=1:nImages
@@ -536,9 +551,13 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
 
     hold(axMain(im),'on');
     hVertical(im) = line(axMain(im),[xPos xPos],[0.5 nY+0.5], ...
-        'Color','g','LineWidth',1.5,'Visible','off','HitTest','off');
+        'Color','g','LineWidth',1.5,'LineStyle','--','Visible','off','HitTest','off');
     hHorizontal(im) = line(axMain(im),[0.5 nX+0.5],[yPos yPos], ...
-        'Color','r','LineWidth',1.5,'Visible','off','HitTest','off');
+        'Color','r','LineWidth',1.5,'LineStyle','--','Visible','off','HitTest','off');
+    hVerticalEnd(im) = line(axMain(im),[xPos xPos],[0.5 nY+0.5], ...
+        'Color','g','LineWidth',1.5,'LineStyle','--','Visible','off','HitTest','off');
+    hHorizontalEnd(im) = line(axMain(im),[0.5 nX+0.5],[yPos yPos], ...
+        'Color','r','LineWidth',1.5,'LineStyle','--','Visible','off','HitTest','off');
     hold(axMain(im),'off');
 
     
@@ -550,7 +569,7 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
             'Visible','off','HitTest','off');
     end
     hXIndicatorXD(im) = line(axXD(im),[xPos xPos],[0.5 nDims(1)+0.5], ...
-        'Color','g','LineWidth',1.5,'Visible','off','HitTest','off');
+        'Color','g','LineWidth',1.5,'LineStyle','--','Visible','off','HitTest','off');
     hold(axXD(im),'off');
     hold(axYD(im),'on');
     for k=1:2
@@ -559,49 +578,106 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
             'Visible','off','HitTest','off');
     end
     hYIndicatorYD(im) = line(axYD(im),[0.5 nDims(1)+0.5],[yPos yPos], ...
-        'Color','r','LineWidth',1.5,'Visible','off','HitTest','off');
+        'Color','r','LineWidth',1.5,'LineStyle','--','Visible','off','HitTest','off');
     hold(axYD(im),'off');
 
     end % image panels
 
-    orthControlsGL = uigridlayout(imageAreaGL,[2 2]);
+    % X/Y averaging controls mirror the controls for dimensions 3 through N.
+    % Both axes can be averaged independently; cross-sections average over
+    % the corresponding inclusive interval, omitting NaN values.
+    orthControlsGL = uigridlayout(imageAreaGL,[1 2]);
     if sliderPosition=="bottom"
         orthControlsGL.Layout.Row = 1;
         orthControlsGL.Layout.Column = 2;
-        orthControlsGL.RowHeight = {100,100};
-        orthControlsGL.ColumnWidth = {85,'1x'};
+        orthControlsGL.RowHeight = {'1x'};
+        orthControlsGL.ColumnWidth = {'1x','1x'};
     else
         orthControlsGL.Layout.Row = 2;
         orthControlsGL.Layout.Column = 1;
-        orthControlsGL.RowHeight = {30,35};
+        orthControlsGL.RowHeight = {'1x'};
         orthControlsGL.ColumnWidth = {'1x','1x'};
     end
-    orthControlsGL.Padding = [10 10 10 10];
-    orthControlsGL.RowSpacing = 10;
-    orthControlsGL.ColumnSpacing = 10;
+    orthControlsGL.Padding = [5 5 5 5];
+    orthControlsGL.ColumnSpacing = 12;
     orthControlsGL.Visible = 'off';
 
-    xLabel = uilabel(orthControlsGL,'Text',sprintf('X: %d / %d',xPos,nX), ...
-        'HorizontalAlignment','center');
-    xSlider = uislider(orthControlsGL,'Limits',[1 max(2,nX)],'Value',xPos, ...
-        'MajorTicks',[],'MinorTicks',[]);
-    yLabel = uilabel(orthControlsGL,'Text',sprintf('Y: %d / %d',yPos,nY), ...
-        'HorizontalAlignment','center');
-    ySlider = uislider(orthControlsGL,'Limits',[1 max(2,nY)],'Value',yPos, ...
-        'MajorTicks',[],'MinorTicks',[]);
-    if sliderPosition=="bottom"
-        xLabel.Layout.Row = 1; xLabel.Layout.Column = 1;
-        xSlider.Layout.Row = 1; xSlider.Layout.Column = 2;
-        yLabel.Layout.Row = 2; yLabel.Layout.Column = 1;
-        ySlider.Layout.Row = 2; ySlider.Layout.Column = 2;
-    else
-        xLabel.Layout.Row = 1; xLabel.Layout.Column = 1;
-        xSlider.Layout.Row = 2; xSlider.Layout.Column = 1;
-        yLabel.Layout.Row = 1; yLabel.Layout.Column = 2;
-        ySlider.Layout.Row = 2; ySlider.Layout.Column = 2;
+    xySliders = gobjects(1,2);
+    xyLabels = gobjects(1,2);
+    xyAvgButtons = gobjects(1,2);
+    xyStartFields = gobjects(1,2);
+    xyEndFields = gobjects(1,2);
+    xyRangeLabels = gobjects(1,2);
+    xyWindowSliders = gobjects(1,2);
+    xyWindowLabels = gobjects(1,2);
+    xySizes = [nX nY];
+    xyNames = {'X','Y'};
+    for xy=1:2
+        xyPanel = uigridlayout(orthControlsGL,[4 2]);
+        xyPanel.Layout.Row = 1;
+        xyPanel.Layout.Column = xy;
+        xyPanel.RowHeight = {22,30,30,30};
+        xyPanel.ColumnWidth = {'1x',75};
+        xyPanel.Padding = [0 0 0 0];
+        xyPanel.RowSpacing = 3;
+        xyLabels(xy) = uilabel(xyPanel,'Text','', ...
+            'HorizontalAlignment','center');
+        xyLabels(xy).Layout.Row = 1;
+        xyLabels(xy).Layout.Column = 1;
+        xySliders(xy) = uislider(xyPanel, ...
+            'Limits',[1 max(2,xySizes(xy))], ...
+            'Value',round(xySizes(xy)/2),'MajorTicks',[],'MinorTicks',[]);
+        xySliders(xy).Layout.Row = 2;
+        xySliders(xy).Layout.Column = 1;
+        xyAvgButtons(xy) = uibutton(xyPanel,'state', ...
+            'Text','Average','Value',false);
+        xyAvgButtons(xy).Layout.Row = [1 2];
+        xyAvgButtons(xy).Layout.Column = 2;
+
+        xyRangeRow = uigridlayout(xyPanel,[1 5]);
+        xyRangeRow.Layout.Row = 3;
+        xyRangeRow.Layout.Column = [1 2];
+        xyRangeRow.ColumnWidth = {78,48,14,48,'1x'};
+        xyRangeRow.ColumnSpacing = 3;
+        xyRangeRow.Padding = [0 0 0 0];
+        uilabel(xyRangeRow,'Text','Avg range:','HorizontalAlignment','right');
+        xyStartFields(xy) = uieditfield(xyRangeRow,'numeric', ...
+            'Value',1,'Limits',[1 max(2,xySizes(xy))], ...
+            'RoundFractionalValues','on');
+        uilabel(xyRangeRow,'Text','to','HorizontalAlignment','center');
+        xyEndFields(xy) = uieditfield(xyRangeRow,'numeric', ...
+            'Value',xySizes(xy),'Limits',[1 max(2,xySizes(xy))], ...
+            'RoundFractionalValues','on');
+        xyRangeLabels(xy) = uilabel(xyRangeRow,'Text', ...
+            sprintf('(%d)',xySizes(xy)));
+
+        xyWindowRow = uigridlayout(xyPanel,[1 2]);
+        xyWindowRow.Layout.Row = 4;
+        xyWindowRow.Layout.Column = [1 2];
+        xyWindowRow.ColumnWidth = {90,'1x'};
+        xyWindowRow.ColumnSpacing = 4;
+        xyWindowRow.Padding = [0 0 0 0];
+        xyWindowLabels(xy) = uilabel(xyWindowRow, ...
+            'Text','Window position:','Visible','off');
+        xyWindowSliders(xy) = uislider(xyWindowRow, ...
+            'Limits',[1 max(2,xySizes(xy))], ...
+            'Value',1,'MajorTicks',[],'MinorTicks',[],'Visible','off');
+        if xySizes(xy)==1
+            xySliders(xy).Enable = 'off';
+            xyStartFields(xy).Enable = 'off';
+            xyEndFields(xy).Enable = 'off';
+        end
+        axisId = xy;
+        xySliders(xy).ValueChangingFcn = @(~,e) positionCallback(axisId,e.Value);
+        xySliders(xy).ValueChangedFcn = @(~,e) positionCallback(axisId,e.Value);
+        xyAvgButtons(xy).ValueChangedFcn = @(~,e) xyAverageCallback(axisId,e.Value);
+        xyStartFields(xy).ValueChangedFcn = @(~,~) xyRangeCallback(axisId);
+        xyEndFields(xy).ValueChangedFcn = @(~,~) xyRangeCallback(axisId);
+        xyWindowSliders(xy).ValueChangingFcn = @(~,e) xyWindowCallback(axisId,e.Value);
+        xyWindowSliders(xy).ValueChangedFcn = @(~,e) xyWindowCallback(axisId,e.Value);
     end
-    if nX==1, xSlider.Enable = 'off'; end
-    if nY==1, ySlider.Enable = 'off'; end
+    xLabel = xyLabels(1); yLabel = xyLabels(2);
+    xSlider = xySliders(1); ySlider = xySliders(2);
 
     controlsGL = uigridlayout(workspaceGL,[nSliders 1]);
     if sliderPosition=="bottom"
@@ -813,7 +889,14 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
                 newIndex = min(max(oldIndex+delta,1),maxStart);
                 activeSlider.Value = newIndex;
                 if newIndex ~= oldIndex, windowCallback(d,newIndex); end
-            case 'x'
+            case 'xywindow'
+                width = diff(xyAvgRanges(d,:))+1;
+                maxStart = xySizes(d)-width+1;
+                if maxStart<=1, return; end
+                newStart = min(max(xyAvgRanges(d,1)+delta,1),maxStart);
+                activeSlider.Value = newStart;
+                if newStart~=xyAvgRanges(d,1), xyWindowCallback(d,newStart); end
+            case 'x' 
                 oldIndex = xPos;
                 newIndex = min(max(oldIndex+delta,1),nX);
                 activeSlider.Value = newIndex;
@@ -882,6 +965,64 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
         end
     end
 
+    function xyAverageCallback(which,value)
+        xyAvgEnabled(which) = logical(value);
+        if value
+            xySliders(which).Enable = 'off';
+            xyWindowSliders(which).Visible = 'on';
+            xyWindowLabels(which).Visible = 'on';
+            updateXYWindowSlider(which);
+        else
+            if xySizes(which)>1, xySliders(which).Enable = 'on'; end
+            xyWindowSliders(which).Visible = 'off';
+            xyWindowLabels(which).Visible = 'off';
+        end
+        updateImages();
+    end
+
+    function xyRangeCallback(which)
+        n = xySizes(which);
+        a = min(max(round(xyStartFields(which).Value),1),n);
+        b = min(max(round(xyEndFields(which).Value),1),n);
+        if a>b, [a,b] = deal(b,a); end
+        xyAvgRanges(which,:) = [a b];
+        xyStartFields(which).Value = a;
+        xyEndFields(which).Value = b;
+        xyRangeLabels(which).Text = sprintf('(%d)',b-a+1);
+        updateXYWindowSlider(which);
+        updateImages();
+    end
+
+    function xyWindowCallback(which,value)
+        selectSlider(xyWindowSliders(which),'xywindow',which);
+        width = diff(xyAvgRanges(which,:))+1;
+        maxStart = xySizes(which)-width+1;
+        a = min(max(round(value),1),maxStart);
+        xyAvgRanges(which,:) = [a a+width-1];
+        if xyWindowSliders(which).Value~=a
+            xyWindowSliders(which).Value = a;
+        end
+        xyStartFields(which).Value = a;
+        xyEndFields(which).Value = a+width-1;
+        updateImages();
+    end
+
+    function updateXYWindowSlider(which)
+        width = diff(xyAvgRanges(which,:))+1;
+        maxStart = xySizes(which)-width+1;
+        slider = xyWindowSliders(which);
+        slider.Limits = [1 max([2,xySizes(which),slider.Limits(2),slider.Value])];
+        if maxStart<=1
+            slider.Value = 1;
+            slider.Limits = [1 2];
+            slider.Enable = 'off';
+        else
+            slider.Value = xyAvgRanges(which,1);
+            slider.Limits = [1 maxStart];
+            slider.Enable = 'on';
+        end
+    end
+
     function orthToggle(value)
         orthEnabled = logical(value);
         ratioDLabel.Visible = matlab.lang.OnOffSwitchState(orthEnabled);
@@ -894,7 +1035,7 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
             fig.Units = 'pixels';
             pos = fig.Position;
             if sliderPosition=="bottom"
-                pos(3) = max(pos(3),1100);
+                pos(3) = max(pos(3),1450);
                 pos(4) = max(pos(4),700);
             else
                 pos(3) = max(pos(3),1250);
@@ -907,6 +1048,8 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
             mainPositionLabel.Visible = 'on';
             hVertical(im).Visible = 'on';
             hHorizontal(im).Visible = 'on';
+            hVerticalEnd(im).Visible = 'off';
+            hHorizontalEnd(im).Visible = 'off';
             % Settle grid dimensions before exposing orthogonal axes.
             drawnow;
             axXD(im).Visible = 'on';
@@ -914,10 +1057,10 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
             imageGL(im).RowSpacing = 24;
             imageGL(im).ColumnSpacing = 24;
             if sliderPosition=="bottom"
-                imageAreaGL.ColumnWidth = {'1x',250};
+                imageAreaGL.ColumnWidth = {'1x',630};
                 imageAreaGL.ColumnSpacing = 8;
             else
-                imageAreaGL.RowHeight = {'1x',95};
+                imageAreaGL.RowHeight = {'1x',270};
                 imageAreaGL.RowSpacing = 8;
             end
         else
@@ -926,6 +1069,8 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
             mainPositionLabel.Visible = 'off';
             hVertical(im).Visible = 'off';
             hHorizontal(im).Visible = 'off';
+            hVerticalEnd(im).Visible = 'off';
+            hHorizontalEnd(im).Visible = 'off';
             axXD(im).Visible = 'off';
             axYD(im).Visible = 'off';
             hXIndicatorXD(im).Visible = 'off';
@@ -1036,11 +1181,13 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
             hYIndicatorYD(im).Visible = 'off';
             continue;
         end
-        hXIndicatorXD(im).XData = [xPos xPos];
+        if xyAvgEnabled(1), indicatorX = mean(xyAvgRanges(1,:)); else, indicatorX = xPos; end
+        if xyAvgEnabled(2), indicatorY = mean(xyAvgRanges(2,:)); else, indicatorY = yPos; end
+        hXIndicatorXD(im).XData = [indicatorX indicatorX];
         hXIndicatorXD(im).YData = [0.5 nDims(orthDim)+0.5];
         hXIndicatorXD(im).Visible = 'on';
         hYIndicatorYD(im).XData = [0.5 nDims(orthDim)+0.5];
-        hYIndicatorYD(im).YData = [yPos yPos];
+        hYIndicatorYD(im).YData = [indicatorY indicatorY];
         hYIndicatorYD(im).Visible = 'on';
         end % panels
     end
@@ -1057,8 +1204,16 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
                 titleParts(d) = sprintf('%s: %d',dimNames(d),idx(d));
             end
         end
-        xLabel.Text = sprintf('X: %d / %d',xPos,nX);
-        yLabel.Text = sprintf('Y: %d / %d',yPos,nY);
+        if xyAvgEnabled(1)
+            xLabel.Text = sprintf('X: Avg [%d:%d]',xyAvgRanges(1,:));
+        else
+            xLabel.Text = sprintf('X: %d / %d',xPos,nX);
+        end
+        if xyAvgEnabled(2)
+            yLabel.Text = sprintf('Y: Avg [%d:%d]',xyAvgRanges(2,:));
+        else
+            yLabel.Text = sprintf('Y: %d / %d',yPos,nY);
+        end
         if avgEnabled(orthDim)
             mainPositionLabel.Text = sprintf('Main: %s [%d:%d] (avg)',dimNames(orthDim),avgRanges(orthDim,1),avgRanges(orthDim,2));
         else
@@ -1075,14 +1230,36 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
             hVertical(im).XData = [xPos xPos];
             hVertical(im).YData = [0.5 nY+0.5];
             hHorizontal(im).XData = [0.5 nX+0.5];
-            hHorizontal(im).YData = [yPos yPos];
+            hHorizontal(im).YData = [xyAvgRanges(2,1) xyAvgRanges(2,1)] * double(xyAvgEnabled(2)) ...
+                + [yPos yPos] * double(~xyAvgEnabled(2));
+            if xyAvgEnabled(1)
+                hVertical(im).XData = [xyAvgRanges(1,1) xyAvgRanges(1,1)];
+                hVerticalEnd(im).XData = [xyAvgRanges(1,2) xyAvgRanges(1,2)];
+            end
+            if xyAvgEnabled(2)
+                hHorizontalEnd(im).YData = [xyAvgRanges(2,2) xyAvgRanges(2,2)];
+            end
+            hVerticalEnd(im).Visible = matlab.lang.OnOffSwitchState(orthEnabled && xyAvgEnabled(1));
+            hHorizontalEnd(im).Visible = matlab.lang.OnOffSwitchState(orthEnabled && xyAvgEnabled(2));
             if orthEnabled
                 if recomputeOrth || isempty(cachedOrthVol{im}) || cachedOrthDim~=orthDim
                     cachedOrthVol{im} = extractData(orthDim,im);
                 end
                 vol = cachedOrthVol{im};
-                xd = reshape(permute(vol(yPos,:,:),[3 2 1]),nDims(orthDim),nX);
-                yd = reshape(vol(:,xPos,:),nY,nDims(orthDim));
+                if xyAvgEnabled(2)
+                    ydIndices = xyAvgRanges(2,1):xyAvgRanges(2,2);
+                    xdSlice = mean(vol(ydIndices,:,:),1,'omitnan');
+                else
+                    xdSlice = vol(yPos,:,:);
+                end
+                if xyAvgEnabled(1)
+                    xdIndices = xyAvgRanges(1,1):xyAvgRanges(1,2);
+                    ydSlice = mean(vol(:,xdIndices,:),2,'omitnan');
+                else
+                    ydSlice = vol(:,xPos,:);
+                end
+                xd = reshape(permute(xdSlice,[3 2 1]),nDims(orthDim),nX);
+                yd = reshape(ydSlice,nY,nDims(orthDim));
                 hXD(im).CData = xd; hXD(im).AlphaData = double(~isnan(xd));
                 hYD(im).CData = yd; hYD(im).AlphaData = double(~isnan(yd));
                 hXD(im).XData = [1 nX]; hXD(im).YData = [1 nDims(orthDim)];
@@ -1091,8 +1268,18 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
                 axXD(im).YLim = [0.5 nDims(orthDim)+0.5];
                 axYD(im).XLim = [0.5 nDims(orthDim)+0.5];
                 axYD(im).YLim = [0.5 nY+0.5];
-                title(axXD(im),sprintf('X-%s | Y = %d',dimNames(orthDim),yPos));
-                title(axYD(im),sprintf('Y-%s | X = %d',dimNames(orthDim),xPos));
+                if xyAvgEnabled(2)
+                    yTitle = sprintf('Y avg [%d:%d]',xyAvgRanges(2,:));
+                else
+                    yTitle = sprintf('Y = %d',yPos);
+                end
+                if xyAvgEnabled(1)
+                    xTitle = sprintf('X avg [%d:%d]',xyAvgRanges(1,:));
+                else
+                    xTitle = sprintf('X = %d',xPos);
+                end
+                title(axXD(im),sprintf('X-%s | %s',dimNames(orthDim),yTitle));
+                title(axYD(im),sprintf('Y-%s | %s',dimNames(orthDim),xTitle));
                 xlabel(axXD(im),'X'); ylabel(axXD(im),dimNames(orthDim));
                 xlabel(axYD(im),dimNames(orthDim)); ylabel(axYD(im),'Y');
             end
