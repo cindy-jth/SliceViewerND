@@ -2,9 +2,9 @@
 
 ### Interactive N-Dimensional Image Viewer for MATLAB
 
-**Version:** 1.2.0  
+**Version:** 1.2.1  
 **Author:** Tianhui (Cindy) Jie  
-**Last Updated:** November 17, 2026  
+**Last Updated:** November 20, 2026  
 **License:** GNU General Public License v3.0 (GPL-3.0-only)
 
 SliceViewerND is an interactive MATLAB visualization tool for exploring multidimensional image arrays.
@@ -12,6 +12,21 @@ SliceViewerND is an interactive MATLAB visualization tool for exploring multidim
 It supports synchronized multi-image comparison, independent slice navigation, multidimensional averaging, movable averaging windows, linked orthogonal views, physical aspect-ratio adjustments, and per-image display controls.
 
 Designed for scientific imaging applications, including optical coherence tomography (OCT), microscopy, volumetric imaging, and time-resolved datasets.
+
+---
+
+## What's New in v1.2.1
+
+Version 1.2.1 adds **independent X and Y averaging controls for orthogonal views**, making it possible to average cross-sections over a selected spatial interval instead of displaying only a single X or Y position.
+
+- **Independent X/Y averaging:** Enable averaging separately for X and Y cross-sectional positions. Averaging X affects the Y–D view; averaging Y affects the X–D view. The main XY image is not averaged along X or Y.
+- **Adjustable averaging ranges:** Set inclusive Start and End indices for each axis.
+- **Movable averaging windows:** Shift each X/Y averaging interval without changing its width, including one-index steps with the left/right arrow keys.
+- **Side-by-side controls:** X and Y position and averaging controls appear next to each other in the orthogonal-view interface.
+- **Linked visual indicators:** Averaging ranges are indicated in the views, and cross-section titles reflect averaging.
+- **Consistent dashed lines:** Red and green intersection indicators use dashed lines, matching the yellow indicators.
+
+These controls remain synchronized across all images in multi-image comparison mode.
 
 ---
 
@@ -43,7 +58,7 @@ Pass `{A, B, C, ...}` to view multiple real-valued numeric arrays in a tiled lay
 - Preserves the selected indices of other dimensions during navigation.
 - Allows custom dimension names.
 
-### 3. Keyboard Navigation (New in v1.1.0)
+### 3. Keyboard Navigation (Expanded in v1.2.1)
 
 Use the **left and right arrow keys** to navigate any selected position slider by exactly one integer step.
 
@@ -52,6 +67,7 @@ Supported controls:
 - **Dimension sliders:** Move backward or forward by one slice.
 - **Averaging window-position sliders:** Shift the averaging interval by one index while preserving its width.
 - **Orthogonal X/Y location sliders:** Move the cross-sectional location by one pixel.
+- **Orthogonal X/Y averaging-window sliders (v1.2.1):** Shift an X or Y averaging interval by one index.
 
 To use keyboard navigation:
 
@@ -113,6 +129,11 @@ The orthogonal dimension **D** can be selected interactively.
 Additional features include:
 
 - Independent X and Y cross-sectional location sliders.
+- **New in v1.2.1:** Separate X and Y Average toggles, inclusive Start/End fields, and movable averaging-window sliders, arranged side by side.
+- Averaging over Y produces an averaged X–D cross-section; averaging over X produces an averaged Y–D cross-section. The XY image remains unaveraged along X and Y.
+- Arrow-key stepping for X/Y averaging windows, preserving the selected window width.
+- Averaging-range indicators and cross-section titles that reflect the selected averaging state.
+- Dashed red and green intersection indicators matching the yellow dashed lines.
 - Linked position indicators across views.
 - Automatic updates when positions or dimensions change.
 - Consistent colormap and color limits across the three views of each image; different images may use different settings.
@@ -303,6 +324,13 @@ The averaging window width remains unchanged.
 2. Click the X or Y location slider.
 3. Use **←** and **→** to move the cross-sectional location by one pixel.
 
+**Orthogonal X/Y averaging (v1.2.1)**
+
+1. Enable Orthogonal Views. The X and Y control groups appear side by side.
+2. Enable **Average** for X and/or Y and set the inclusive Start and End fields.
+3. Click the corresponding **Window Position** slider and press **←** or **→** to move the averaging interval by one index without changing its width.
+4. Observe the updated X–D or Y–D cross-section and dashed range indicators.
+
 The orthogonal images and position indicators update automatically.
 
 ---
@@ -320,6 +348,9 @@ The orthogonal images and position indicators update automatically.
 | Orthogonal dimension dropdown | Select cross-sectional dimension D | — |
 | X Location slider | Select X cross-sectional location | ← / → (±1 pixel) |
 | Y Location slider | Select Y cross-sectional location | ← / → (±1 pixel) |
+| X/Y Average toggles | Average over the selected X or Y interval in the corresponding orthogonal cross-section | — |
+| X/Y Start and End fields | Define inclusive orthogonal averaging ranges | — |
+| X/Y Window Position sliders | Shift orthogonal averaging intervals without changing width | ← / → (±1 index) |
 | X/Y/D ratio controls | Adjust physical sample spacing | — |
 | Image selector | Choose dataset whose CLim is edited | — |
 | Color-limit controls | Adjust selected dataset's display range | — |
@@ -404,6 +435,17 @@ Compatibility may depend on the MATLAB release and availability of the required 
 ---
 
 ## Version History
+
+### v1.2.1 — November 20, 2026
+
+**Orthogonal X/Y Averaging & Interface Refinements**
+
+- Added independent X and Y averaging in orthogonal views, with inclusive range fields and movable averaging-window sliders.
+- Arranged the X and Y orthogonal control groups side by side.
+- Added one-index keyboard stepping for X/Y averaging windows.
+- Added averaging-range indicators and updated cross-section titles.
+- Changed red and green intersection indicators to dashed lines to match the yellow indicators.
+
 
 ### v1.2.0 — November 17, 2026
 
