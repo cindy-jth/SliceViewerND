@@ -494,7 +494,7 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
     hVertical = gobjects(1,nImages); hHorizontal = gobjects(1,nImages);
     hVerticalEnd = gobjects(1,nImages); hHorizontalEnd = gobjects(1,nImages);
     hMainXD = gobjects(nImages,2); hMainYD = gobjects(nImages,2);
-    hXIndicatorXD = gobjects(1,nImages); hYIndicatorYD = gobjects(1,nImages);
+    hXIndicatorXD = gobjects(nImages,2); hYIndicatorYD = gobjects(nImages,2);
     for im=1:nImages
     imageGL(im) = uigridlayout(compareGL,[2 2]);
     imageGL(im).Layout.Row = ceil(im/tileColumns);
@@ -576,8 +576,10 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
             'Color','y','LineWidth',1.5,'LineStyle','--', ...
             'Visible','off','HitTest','off');
     end
-    hXIndicatorXD(im) = line(axXD(im),[xPos xPos],[0.5 nDims(1)+0.5], ...
-        'Color','g','LineWidth',1.5,'LineStyle','--','Visible','off','HitTest','off');
+    for k=1:2
+        hXIndicatorXD(im,k) = line(axXD(im),[xPos xPos],[0.5 nDims(1)+0.5], ...
+            'Color','g','LineWidth',1.5,'LineStyle','--','Visible','off','HitTest','off');
+    end
     hold(axXD(im),'off');
     hold(axYD(im),'on');
     for k=1:2
@@ -585,8 +587,10 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
             'Color','y','LineWidth',1.5,'LineStyle','--', ...
             'Visible','off','HitTest','off');
     end
-    hYIndicatorYD(im) = line(axYD(im),[0.5 nDims(1)+0.5],[yPos yPos], ...
-        'Color','r','LineWidth',1.5,'LineStyle','--','Visible','off','HitTest','off');
+    for k=1:2
+        hYIndicatorYD(im,k) = line(axYD(im),[0.5 nDims(1)+0.5],[yPos yPos], ...
+            'Color','r','LineWidth',1.5,'LineStyle','--','Visible','off','HitTest','off');
+    end
     hold(axYD(im),'off');
 
     end % image panels
@@ -1122,8 +1126,8 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
             hHorizontalEnd(im).Visible = 'off';
             axXD(im).Visible = 'off';
             axYD(im).Visible = 'off';
-            hXIndicatorXD(im).Visible = 'off';
-            hYIndicatorYD(im).Visible = 'off';
+            set(hXIndicatorXD(im,:),'Visible','off');
+            set(hYIndicatorYD(im,:),'Visible','off');
             imageGL(im).RowHeight = {'1x',0};
             imageGL(im).ColumnWidth = {'1x',0};
             imageGL(im).RowSpacing = 0;
@@ -1224,18 +1228,29 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
     function updateOrthogonalIntersectionIndicators()
         for im=1:nImages
         if ~orthEnabled
-            hXIndicatorXD(im).Visible = 'off';
-            hYIndicatorYD(im).Visible = 'off';
+            set(hXIndicatorXD(im,:),'Visible','off');
+            set(hYIndicatorYD(im,:),'Visible','off');
             continue;
         end
-        if xyAvgEnabled(1), indicatorX = mean(xyAvgRanges(1,:)); else, indicatorX = xPos; end
-        if xyAvgEnabled(2), indicatorY = mean(xyAvgRanges(2,:)); else, indicatorY = yPos; end
-        hXIndicatorXD(im).XData = [indicatorX indicatorX];
-        hXIndicatorXD(im).YData = [0.5 nDims(orthDim)+0.5];
-        hXIndicatorXD(im).Visible = 'on';
-        hYIndicatorYD(im).XData = [0.5 nDims(orthDim)+0.5];
-        hYIndicatorYD(im).YData = [indicatorY indicatorY];
-        hYIndicatorYD(im).Visible = 'on';
+        % Draw both averaging boundaries; draw one position line otherwise.
+        if xyAvgEnabled(1), xLocations = xyAvgRanges(1,:); else, xLocations = xPos; end
+        if xyAvgEnabled(2), yLocations = xyAvgRanges(2,:); else, yLocations = yPos; end
+        for k=1:2
+            if k<=numel(xLocations)
+                hXIndicatorXD(im,k).XData = [xLocations(k) xLocations(k)];
+                hXIndicatorXD(im,k).YData = [0.5 nDims(orthDim)+0.5];
+                hXIndicatorXD(im,k).Visible = 'on';
+            else
+                hXIndicatorXD(im,k).Visible = 'off';
+            end
+            if k<=numel(yLocations)
+                hYIndicatorYD(im,k).XData = [0.5 nDims(orthDim)+0.5];
+                hYIndicatorYD(im,k).YData = [yLocations(k) yLocations(k)];
+                hYIndicatorYD(im,k).Visible = 'on';
+            else
+                hYIndicatorYD(im,k).Visible = 'off';
+            end
+        end
         end % panels
     end
 
