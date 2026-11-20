@@ -177,7 +177,7 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
 %
 %   Author:       Tianhui (Cindy) Jie
 %   Date:         November 20, 2026
-%   Version:      1.2.1
+%   Version:      1.2.2
 %   License:      GNU General Public License v3.0
 %
 %   Copyright (c) 2026 Tianhui (Cindy) Jie
@@ -199,10 +199,18 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
 %       https://chatgpt.com/
 %
 % VERSION HISTORY
+%   v1.2.2 (2026-11-20)
+%       - Placed all dimension and X/Y controls side by side in one row
+%         for the bottom layout, with matching slider, Average button,
+%         range-field, and averaging-window styling and spacing.
+%       - Placed X/Y controls after the dimension sliders in the right
+%         layout, stacked as separate full-width rows.
+%       - Kept the right sidebar width fixed when toggling orthogonal views.
 %   v1.2.1 (2026-11-20)
 %       - Added independent X and Y averaging in orthogonal views, with
 %         separate range fields and movable averaging-window sliders.
-%       - Arranged X and Y orthogonal controls side by side.
+%       - Arranged X and Y orthogonal controls side by side
+%         within the main dimension-slider control area.
 %       - Added keyboard stepping for X/Y averaging windows.
 %       - Added averaging-range indicators and updated cross-section titles.
 %       - Made red and green intersection indicators dashed to match yellow.
@@ -363,7 +371,7 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
         imageRatio = (nX*dimensionRatio(1))/(nY*dimensionRatio(2));
         imageRatio = max(0.25,min(5,imageRatio));
         if sliderPosition=="bottom"
-            controlsHeight = 145*nSliders+10*max(0,nSliders-1);
+            controlsHeight = 145;
             figHeight = max(750,min(1100,controlsHeight+450));
             plotHeight = max(240,figHeight-controlsHeight-110);
             figWidth = max(980,min(1900,round(plotHeight*imageRatio*min(nImages,3)+160)));
@@ -445,7 +453,7 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
 
     if sliderPosition=="bottom"
         workspaceGL = uigridlayout(outerGL,[2 1]);
-        workspaceGL.RowHeight = {'1x',145*nSliders+10*(nSliders-1)};
+        workspaceGL.RowHeight = {'1x',145};
         workspaceGL.ColumnWidth = {'1x'};
     else
         workspaceGL = uigridlayout(outerGL,[1 2]);
@@ -458,12 +466,12 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
     workspaceGL.ColumnSpacing = 8;
 
     if sliderPosition=="bottom"
-        imageAreaGL = uigridlayout(workspaceGL,[1 2]);
-        imageAreaGL.ColumnWidth = {'1x',0};
+        imageAreaGL = uigridlayout(workspaceGL,[1 1]);
+        imageAreaGL.ColumnWidth = {'1x'};
         imageAreaGL.RowHeight = {'1x'};
     else
-        imageAreaGL = uigridlayout(workspaceGL,[2 1]);
-        imageAreaGL.RowHeight = {'1x',0};
+        imageAreaGL = uigridlayout(workspaceGL,[1 1]);
+        imageAreaGL.RowHeight = {'1x'};
         imageAreaGL.ColumnWidth = {'1x'};
     end
     imageAreaGL.Layout.Row = 1;
@@ -583,23 +591,57 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
 
     end % image panels
 
+    if sliderPosition=="bottom"
+        % All dimension controls occupy one horizontal strip; X/Y use the
+        % final two columns when orthogonal views are enabled.
+        controlsGL = uigridlayout(workspaceGL,[1 nSliders+2]);
+    else
+        % Right-side controls stack vertically, with X/Y at the bottom.
+        controlsGL = uigridlayout(workspaceGL,[nSliders+2 1]);
+    end
+    if sliderPosition=="bottom"
+        controlsGL.Layout.Row = 2;
+        controlsGL.Layout.Column = 1;
+    else
+        controlsGL.Layout.Row = 1;
+        controlsGL.Layout.Column = 2;
+    end
+    if sliderPosition=="bottom"
+        controlsGL.RowHeight = {145};
+        controlsGL.ColumnWidth = [repmat({'1x'},1,nSliders),{0,0}];
+        controlsGL.ColumnSpacing = 8;
+    else
+        controlsGL.RowHeight = [repmat({145},1,nSliders),{0,0}];
+        controlsGL.ColumnWidth = {'1x'};
+        controlsGL.RowSpacing = 10;
+    end
+    controlsGL.Padding = [0 0 0 0];
+
     % X/Y averaging controls mirror the controls for dimensions 3 through N.
     % Both axes can be averaged independently; cross-sections average over
     % the corresponding inclusive interval, omitting NaN values.
-    orthControlsGL = uigridlayout(imageAreaGL,[1 2]);
+    if sliderPosition=="bottom"
+        orthControlsGL = uigridlayout(controlsGL,[1 2]);
+    else
+        orthControlsGL = uigridlayout(controlsGL,[2 1]);
+    end
     if sliderPosition=="bottom"
         orthControlsGL.Layout.Row = 1;
-        orthControlsGL.Layout.Column = 2;
+        orthControlsGL.Layout.Column = [nSliders+1 nSliders+2];
+    else
+        orthControlsGL.Layout.Row = [nSliders+1 nSliders+2];
+        orthControlsGL.Layout.Column = 1;
+    end
+    if sliderPosition=="bottom"
         orthControlsGL.RowHeight = {'1x'};
         orthControlsGL.ColumnWidth = {'1x','1x'};
     else
-        orthControlsGL.Layout.Row = 2;
-        orthControlsGL.Layout.Column = 1;
-        orthControlsGL.RowHeight = {'1x'};
-        orthControlsGL.ColumnWidth = {'1x','1x'};
+        orthControlsGL.RowHeight = {'1x','1x'};
+        orthControlsGL.ColumnWidth = {'1x'};
     end
-    orthControlsGL.Padding = [5 5 5 5];
-    orthControlsGL.ColumnSpacing = 12;
+    orthControlsGL.Padding = [0 0 0 0];
+    orthControlsGL.ColumnSpacing = 8;
+    orthControlsGL.RowSpacing = 10;
     orthControlsGL.Visible = 'off';
 
     xySliders = gobjects(1,2);
@@ -614,12 +656,18 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
     xyNames = {'X','Y'};
     for xy=1:2
         xyPanel = uigridlayout(orthControlsGL,[4 2]);
-        xyPanel.Layout.Row = 1;
-        xyPanel.Layout.Column = xy;
-        xyPanel.RowHeight = {22,30,30,30};
-        xyPanel.ColumnWidth = {'1x',75};
-        xyPanel.Padding = [0 0 0 0];
-        xyPanel.RowSpacing = 3;
+        if sliderPosition=="bottom"
+            xyPanel.Layout.Row = 1;
+            xyPanel.Layout.Column = xy;
+        else
+            xyPanel.Layout.Row = xy;
+            xyPanel.Layout.Column = 1;
+        end
+        % Match the dimension-slider panel design in both orientations.
+        xyPanel.RowHeight = {25,35,35,35};
+        xyPanel.ColumnWidth = {'1x',110};
+        xyPanel.Padding = [5 0 5 0];
+        xyPanel.RowSpacing = 5;
         xyLabels(xy) = uilabel(xyPanel,'Text','', ...
             'HorizontalAlignment','center');
         xyLabels(xy).Layout.Row = 1;
@@ -637,10 +685,10 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
         xyRangeRow = uigridlayout(xyPanel,[1 5]);
         xyRangeRow.Layout.Row = 3;
         xyRangeRow.Layout.Column = [1 2];
-        xyRangeRow.ColumnWidth = {78,48,14,48,'1x'};
-        xyRangeRow.ColumnSpacing = 3;
+        xyRangeRow.ColumnWidth = {105,65,20,65,'1x'};
+        xyRangeRow.ColumnSpacing = 5;
         xyRangeRow.Padding = [0 0 0 0];
-        uilabel(xyRangeRow,'Text','Avg range:','HorizontalAlignment','right');
+        uilabel(xyRangeRow,'Text','Average range:','HorizontalAlignment','right');
         xyStartFields(xy) = uieditfield(xyRangeRow,'numeric', ...
             'Value',1,'Limits',[1 max(2,xySizes(xy))], ...
             'RoundFractionalValues','on');
@@ -649,13 +697,13 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
             'Value',xySizes(xy),'Limits',[1 max(2,xySizes(xy))], ...
             'RoundFractionalValues','on');
         xyRangeLabels(xy) = uilabel(xyRangeRow,'Text', ...
-            sprintf('(%d)',xySizes(xy)));
+            sprintf('(%d slices)',xySizes(xy)));
 
         xyWindowRow = uigridlayout(xyPanel,[1 2]);
         xyWindowRow.Layout.Row = 4;
         xyWindowRow.Layout.Column = [1 2];
-        xyWindowRow.ColumnWidth = {90,'1x'};
-        xyWindowRow.ColumnSpacing = 4;
+        xyWindowRow.ColumnWidth = {110,'1x'};
+        xyWindowRow.ColumnSpacing = 10;
         xyWindowRow.Padding = [0 0 0 0];
         xyWindowLabels(xy) = uilabel(xyWindowRow, ...
             'Text','Window position:','Visible','off');
@@ -679,19 +727,6 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
     xLabel = xyLabels(1); yLabel = xyLabels(2);
     xSlider = xySliders(1); ySlider = xySliders(2);
 
-    controlsGL = uigridlayout(workspaceGL,[nSliders 1]);
-    if sliderPosition=="bottom"
-        controlsGL.Layout.Row = 2;
-        controlsGL.Layout.Column = 1;
-    else
-        controlsGL.Layout.Row = 1;
-        controlsGL.Layout.Column = 2;
-    end
-    controlsGL.RowHeight = repmat({145},1,nSliders);
-    controlsGL.ColumnWidth = {'1x'};
-    controlsGL.RowSpacing = 10;
-    controlsGL.Padding = [0 0 0 0];
-
     sliders = gobjects(1,nSliders);
     windowSliders = gobjects(1,nSliders);
     labels = gobjects(1,nSliders);
@@ -703,7 +738,13 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
 
     for d=1:nSliders
         panel = uigridlayout(controlsGL,[4 2]);
-        panel.Layout.Row = d;
+        if sliderPosition=="bottom"
+            panel.Layout.Row = 1;
+            panel.Layout.Column = d;
+        else
+            panel.Layout.Row = d;
+            panel.Layout.Column = 1;
+        end
         panel.RowHeight = {25,35,35,35};
         panel.ColumnWidth = {'1x',110};
         panel.Padding = [5 0 5 0];
@@ -988,7 +1029,7 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
         xyAvgRanges(which,:) = [a b];
         xyStartFields(which).Value = a;
         xyEndFields(which).Value = b;
-        xyRangeLabels(which).Text = sprintf('(%d)',b-a+1);
+        xyRangeLabels(which).Text = sprintf('(%d slices)',b-a+1);
         updateXYWindowSlider(which);
         updateImages();
     end
@@ -1035,16 +1076,21 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
             fig.Units = 'pixels';
             pos = fig.Position;
             if sliderPosition=="bottom"
-                pos(3) = max(pos(3),1450);
-                pos(4) = max(pos(4),700);
+                pos(3) = max(pos(3),max(1450,350*nSliders+470));
+                pos(4) = max(pos(4),750);
             else
-                pos(3) = max(pos(3),1250);
-                pos(4) = max(pos(4),720);
+                % Keep figure width fixed when orthogonal views are toggled.
+                pos(4) = max(pos(4),155+145*(nSliders+2)+10*(nSliders+1)+100);
             end
             fig.Position = pos;
             fig.Units = oldUnits;
             ratioGL.ColumnWidth = {45,16,'1x',16,'1x',16,'1x'};
             orthControlsGL.Visible = 'on';
+            if sliderPosition=="bottom"
+                controlsGL.ColumnWidth = repmat({'1x'},1,nSliders+2);
+            else
+                controlsGL.RowHeight = [repmat({145},1,nSliders),{145,145}];
+            end
             mainPositionLabel.Visible = 'on';
             hVertical(im).Visible = 'on';
             hHorizontal(im).Visible = 'on';
@@ -1057,15 +1103,18 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
             imageGL(im).RowSpacing = 24;
             imageGL(im).ColumnSpacing = 24;
             if sliderPosition=="bottom"
-                imageAreaGL.ColumnWidth = {'1x',630};
-                imageAreaGL.ColumnSpacing = 8;
+                workspaceGL.RowHeight = {'1x',145};
             else
-                imageAreaGL.RowHeight = {'1x',270};
-                imageAreaGL.RowSpacing = 8;
+                workspaceGL.ColumnWidth = {'1x',420};
             end
         else
             ratioGL.ColumnWidth = {45,16,'1x',16,'1x',0,0};
             orthControlsGL.Visible = 'off';
+            if sliderPosition=="bottom"
+                controlsGL.ColumnWidth = [repmat({'1x'},1,nSliders),{0,0}];
+            else
+                controlsGL.RowHeight = [repmat({145},1,nSliders),{0,0}];
+            end
             mainPositionLabel.Visible = 'off';
             hVertical(im).Visible = 'off';
             hHorizontal(im).Visible = 'off';
@@ -1080,11 +1129,9 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
             imageGL(im).RowSpacing = 0;
             imageGL(im).ColumnSpacing = 0;
             if sliderPosition=="bottom"
-                imageAreaGL.ColumnWidth = {'1x',0};
-                imageAreaGL.ColumnSpacing = 0;
+                workspaceGL.RowHeight = {'1x',145};
             else
-                imageAreaGL.RowHeight = {'1x',0};
-                imageAreaGL.RowSpacing = 0;
+                workspaceGL.ColumnWidth = {'1x',420};
             end
         end
         end % panels
