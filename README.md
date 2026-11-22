@@ -2,7 +2,7 @@
 
 ### Interactive N-Dimensional Image Viewer for MATLAB
 
-**Version:** 1.2.3  
+**Version:** 1.3.0  
 **Author:** Tianhui (Cindy) Jie  
 **Last Updated:** November 22, 2026  
 **License:** GNU General Public License v3.0 (GPL-3.0-only)
@@ -15,7 +15,19 @@ Designed for scientific imaging applications, including optical coherence tomogr
 
 ---
 
-## What's New in v1.2.3
+## What's New in v1.3.0
+
+Version 1.3.0 consolidates the ROI and TIFF export improvements developed after v1.2.3 into one release.
+
+- **Freehand ROI selection:** Draw in XY, X–D, or Y–D using a separate ROI window with **Draw ROI**, **Confirm ROI**, **Restart ROI**, and **Accept ROI** controls.
+- **ROI visualization:** Preview candidates and show accepted masks as translucent red overlays; toggle **Show ROI**, use **Add Another ROI** to refine a mask, or **Erase ROI** to clear it. Existing masks appear red and new candidates yellow in the drawing window.
+- **N-D ROI refinement:** ROI selections from different planes are replicated through omitted dimensions and intersected to form a logical volume mask.
+- **Preloaded ROI masks:** Set `initialView.roiMask` to initialize the ROI from a binary mask. Missing dimensions are replicated; each smaller dimension must evenly divide its corresponding data dimension.
+- **Mask retrieval:** Request `[fig,mask] = SliceViewerND(data)` to wait for an accepted ROI, or retrieve the latest selection using `getappdata(fig,'ROISelection')`.
+- **Three TIFF export modes:** **Figure annotations**, **Cross-section only**, and **ROI mask only**. ROI-mask TIFFs are 8-bit black-and-white (white selected ROI, black background) and match the cross-section-only export size and physical aspect ratio.
+- **Updated export options:** Use `exportOptions.outputFolder` and `exportOptions.exportMode` instead of the former `crossSectionOnly` field.
+
+### What's New in v1.2.3
 
 Version 1.2.3 consolidates all improvements since v1.2.2 into one release, including navigation, initialization, and TIFF export.
 
@@ -24,7 +36,7 @@ Version 1.2.3 consolidates all improvements since v1.2.2 into one release, inclu
 - **Initial-view configuration:** The optional `initialView` struct sets initial slice indices, averaging ranges, orthogonal-view visibility and dimension, X/Y positions, and X/Y averaging ranges.
 - **TIFF export:** Choose an output folder and click **Save TIFFs** to save the visible XY and, when enabled, X–D and Y–D views for each dataset. Filenames include the view configuration and avoid overwriting existing files.
 - **Cross-section-only export:** Toggle **Cross-section only** to save the image without axes, colorbars, titles, or dashed indicators. Exports use the current colormap, CLim, NaN background, and display aspect ratio; nearest-neighbor resizing preserves pixel colors.
-- **Export options:** The final optional `exportOptions` struct preconfigures `outputFolder` and `crossSectionOnly`.
+- **Export options at this release:** The final optional `exportOptions` struct originally provided `outputFolder` and `crossSectionOnly`; as of v1.3.0, use `outputFolder` and `exportMode`.
 
 ### What's New in v1.2.2
 
@@ -202,9 +214,15 @@ Each view is scaled independently, so changing one physical dimension does not u
 
 ---
 
-### 10. Initial View and TIFF Export (New in v1.2.3)
+### 10. Initial View, ROI Selection, and TIFF Export (Updated in v1.3.0)
 
-Use `initialView` to initialize the viewer's slice and averaging state, and `exportOptions` to prefill the TIFF export folder and cross-section-only toggle. In the toolbar, choose an export folder, toggle **Cross-section only** as desired, then click **Save TIFFs**. The viewer saves one TIFF per visible view per dataset, without overwriting existing files. Cross-section-only TIFFs omit decorations while preserving the selected image appearance and physical aspect ratio.
+Use `initialView` to initialize navigation, averaging, orthogonal views, and an optional `roiMask`. Use `exportOptions` to configure the TIFF destination and export mode. The toolbar offers an **Export mode** dropdown with **Figure annotations**, **Cross-section only**, and **ROI mask only**. Click **Save TIFFs** to export one TIFF per visible view per dataset with collision-safe filenames. Cross-section-only TIFFs preserve the selected CLim, colormap, NaN background, and physical aspect ratio without annotations. ROI-mask-only TIFFs contain a white ROI on black background at the corresponding cross-section export dimensions; an accepted ROI is required.
+
+### 11. Freehand ROI Selection (New in v1.3.0)
+
+Click **Freehand ROI**, select a dataset and XY/X–D/Y–D view, and draw a closed region. **Confirm ROI** previews the selection, **Restart ROI** redraws it, and **Accept ROI** saves it. Accepted ROIs are shown as translucent red overlays in linked views. Use **Add Another ROI** to intersect another selection with the existing N-D mask, **Show ROI** to toggle the overlay, or **Erase ROI** to clear the selection. Source image arrays are not modified.
+
+The current ROI selection is accessible using `getappdata(fig,'ROISelection')`, including its logical `mask` and selected `pixelValues`. Requesting a second output, `[fig,mask]`, waits for ROI acceptance (or viewer closure).
 
 ---
 
@@ -253,12 +271,14 @@ fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
 | `nanColor` | RGB triplet, N-by-3 RGB matrix, or N-cell array of RGB triplets | `[0.25 0.25 0.25]` |
 | `sliderPosition` | Position of navigation controls (`"bottom"` or `"right"`) | `"bottom"` |
 | `dimensionRatio` | Relative physical spacing `[X Y D]` | `[1 1 1]` |
-| `initialView` | Struct: `indices`, `averageRanges`, `orthogonal`, `orthDimension`, `xyPositions`, `xyAverageRanges` | `struct()` |
-| `exportOptions` | Struct: `outputFolder` and `crossSectionOnly` | `struct()` (current folder, decorated TIFFs) |
+| `initialView` | Struct: `indices`, `averageRanges`, `orthogonal`, `orthDimension`, `xyPositions`, `xyAverageRanges`, `roiMask` | `struct()` |
+| `exportOptions` | Struct: `outputFolder` and `exportMode` (`"figureAnnotations"`, `"crossSectionOnly"`, or `"roiMaskOnly"`) | `struct()` (current folder, figure annotations) |
 
 ### Output
 
 `fig` — Handle to the MATLAB UIFigure containing the interactive viewer.
+
+`mask` (optional) — Logical accepted ROI mask; requesting this second output waits for acceptance. An ROI refined across planes can produce an N-D intersection mask. If the viewer closes before acceptance, returns `[]`.
 
 ---
 
@@ -341,14 +361,40 @@ initialView = struct('indices',[20 3], ...
     'orthogonal',true,'orthDimension',1, ...
     'xyPositions',[100 60]);
 exportOptions = struct('outputFolder',fullfile(pwd,'exports'), ...
-    'crossSectionOnly',true);
+    'exportMode','crossSectionOnly');
 
 fig = SliceViewerND(data,[],gray(256),["Depth","Time"],[], ...
     "OCT Viewer",[],[0.25 0.25 0.25],"bottom",[1 1 1], ...
     initialView,exportOptions);
 ```
 
-The initial view is configured when the viewer opens. The export folder and cross-section-only setting can still be changed in the toolbar.
+The initial view is configured when the viewer opens. The export folder and export mode can still be changed in the toolbar.
+
+### Example 5b: Preload and Export an ROI Mask (New in v1.3.0)
+
+```matlab
+data = rand(128,256,50);
+roiMask = false(128,256);
+roiMask(30:90,60:180) = true;
+
+initialView = struct('roiMask',roiMask);
+exportOptions = struct('outputFolder',fullfile(pwd,'exports'), ...
+    'exportMode','roiMaskOnly');
+
+fig = SliceViewerND(data,[],[],[],[],[],[],[],[],[], ...
+    initialView,exportOptions);
+```
+
+The 2-D ROI is replicated across the remaining data dimension. **Save TIFFs** exports black-and-white ROI masks with the same dimensions as the corresponding cross-section-only TIFFs.
+
+### Example 5c: Retrieve an Interactively Selected ROI
+
+```matlab
+[fig,mask] = SliceViewerND(data);  % Waits for ROI acceptance
+% Alternatively, with a single output:
+% roi = getappdata(fig,'ROISelection');
+% mask = roi.mask;
+```
 
 ### Example 6: Keyboard Navigation
 
@@ -410,8 +456,11 @@ The orthogonal images and position indicators update automatically.
 | Image selector | Choose dataset whose CLim is edited | — |
 | Color-limit controls | Adjust selected dataset's display range | — |
 | Export folder | Select the directory for saved TIFFs | — |
-| Cross-section only | Toggle image-only TIFFs without annotations or overlays | — |
+| Export mode | Select Figure annotations, Cross-section only, or ROI mask only | — |
 | Save TIFFs | Export each visible view for each dataset | — |
+| Freehand ROI / Add Another ROI | Draw a new ROI or refine the existing mask | — |
+| Show ROI | Toggle accepted red ROI overlays | — |
+| Erase ROI | Clear the accepted ROI mask | — |
 
 ### Keyboard Navigation Notes
 
@@ -494,6 +543,19 @@ Compatibility may depend on the MATLAB release and availability of the required 
 
 ## Version History
 
+### v1.3.0 — November 22, 2026
+
+**Freehand ROI Selection, N-D Mask Refinement, and Three-Mode TIFF Export**
+
+- Added freehand ROI selection in XY, X–D, and Y–D views, with Confirm, Restart, and Accept actions.
+- Added translucent red accepted-mask overlays, Show ROI, Add Another ROI, and Erase ROI controls.
+- Added sequential ROI refinement across planes using N-D replication and logical intersection; existing masks appear red and candidates yellow in the ROI window.
+- Added `initialView.roiMask` with compatible-dimension replication, immediate visualization, refinement, and export.
+- Added optional `mask` output and `ROISelection` appdata for logical masks and selected pixel values; improved mask creation and overlay sizing.
+- Consolidated TIFF export modes into `figureAnnotations`, `crossSectionOnly`, and `roiMaskOnly`; ROI-only exports are 8-bit black-and-white TIFFs matching cross-section-only dimensions.
+- Updated `exportOptions` to `outputFolder` and `exportMode`; preserved color limits, colormaps, NaN colors, physical aspect ratios, and collision-safe naming for image exports.
+
+
 ### v1.2.3 — November 22, 2026
 
 **Mouse-Wheel Navigation, Automatic Dimensionality, Initial Views, and TIFF Export**
@@ -503,7 +565,7 @@ Compatibility may depend on the MATLAB release and availability of the required 
 - Added the optional `initialView` struct for initial navigation, averaging, and orthogonal-view settings.
 - Added GUI TIFF export of visible views with configurable destination and collision-safe descriptive filenames.
 - Added cross-section-only TIFF exports without axes, colorbars, labels, or indicator overlays.
-- Added the optional final `exportOptions` struct (`outputFolder`, `crossSectionOnly`).
+- Added the original optional `exportOptions` struct (`outputFolder`, `crossSectionOnly`), superseded by `exportMode` in v1.3.0.
 - Preserved display colormaps, CLim, NaN background, and physical aspect ratios in TIFF exports.
 
 
@@ -596,7 +658,7 @@ GitHub: [cindy-jth](https://github.com/cindy-jth)
 
 ## AI Assistance
 
-SliceViewerND was developed by Tianhui (Cindy) Jie with assistance from **OpenAI ChatGPT (GPT-6, October 16, 2026)**.
+SliceViewerND was developed by Tianhui (Cindy) Jie with assistance from **OpenAI ChatGPT (GPT-6, November 17, 2026)**.
 
 AI assistance included:
 
