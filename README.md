@@ -2,7 +2,7 @@
 
 ### Interactive N-Dimensional Image Viewer for MATLAB
 
-**Version:** 1.3.0  
+**Version:** 1.3.1  
 **Author:** Tianhui (Cindy) Jie  
 **Last Updated:** November 22, 2026  
 **License:** GNU General Public License v3.0 (GPL-3.0-only)
@@ -15,6 +15,14 @@ Designed for scientific imaging applications, including optical coherence tomogr
 
 ---
 
+## What's New in v1.3.1
+
+Version 1.3.1 finalizes the interactive ROI workflow while keeping the viewer available for inspection and export.
+
+- **Explicit ROI finalization:** Click **Finish ROI Selection** after accepting one or more ROIs. The optional `[fig,mask]` output waits until this action and returns the finalized logical mask, including intersections across planes.
+- **Locked editing controls:** After finalization, **Add Another ROI**, **Erase ROI**, and **Finish ROI Selection** are disabled. The accepted ROI and red overlay remain available, and the viewer stays open for navigation and TIFF export.
+- **Skip ROI selection:** Set `initialView.skipROISelection = true` to bypass the ROI-selection wait and return an empty mask when requesting two outputs.
+
 ## What's New in v1.3.0
 
 Version 1.3.0 consolidates the ROI and TIFF export improvements developed after v1.2.3 into one release.
@@ -23,7 +31,7 @@ Version 1.3.0 consolidates the ROI and TIFF export improvements developed after 
 - **ROI visualization:** Preview candidates and show accepted masks as translucent red overlays; toggle **Show ROI**, use **Add Another ROI** to refine a mask, or **Erase ROI** to clear it. Existing masks appear red and new candidates yellow in the drawing window.
 - **N-D ROI refinement:** ROI selections from different planes are replicated through omitted dimensions and intersected to form a logical volume mask.
 - **Preloaded ROI masks:** Set `initialView.roiMask` to initialize the ROI from a binary mask. Missing dimensions are replicated; each smaller dimension must evenly divide its corresponding data dimension.
-- **Mask retrieval:** Request `[fig,mask] = SliceViewerND(data)` to wait for an accepted ROI, or retrieve the latest selection using `getappdata(fig,'ROISelection')`.
+- **Mask retrieval:** Request `[fig,mask] = SliceViewerND(data)` to wait for **Finish ROI Selection** and return the finalized mask, or retrieve the latest selection using `getappdata(fig,'ROISelection')`.
 - **Three TIFF export modes:** **Figure annotations**, **Cross-section only**, and **ROI mask only**. ROI-mask TIFFs are 8-bit black-and-white (white selected ROI, black background) and match the cross-section-only export size and physical aspect ratio.
 - **Updated export options:** Use `exportOptions.outputFolder` and `exportOptions.exportMode` instead of the former `crossSectionOnly` field.
 
@@ -216,13 +224,13 @@ Each view is scaled independently, so changing one physical dimension does not u
 
 ### 10. Initial View, ROI Selection, and TIFF Export (Updated in v1.3.0)
 
-Use `initialView` to initialize navigation, averaging, orthogonal views, and an optional `roiMask`. Use `exportOptions` to configure the TIFF destination and export mode. The toolbar offers an **Export mode** dropdown with **Figure annotations**, **Cross-section only**, and **ROI mask only**. Click **Save TIFFs** to export one TIFF per visible view per dataset with collision-safe filenames. Cross-section-only TIFFs preserve the selected CLim, colormap, NaN background, and physical aspect ratio without annotations. ROI-mask-only TIFFs contain a white ROI on black background at the corresponding cross-section export dimensions; an accepted ROI is required.
+Use `initialView` to initialize navigation, averaging, orthogonal views, an optional `roiMask`, and the `skipROISelection` flag. Use `exportOptions` to configure the TIFF destination and export mode. The toolbar offers an **Export mode** dropdown with **Figure annotations**, **Cross-section only**, and **ROI mask only**. Click **Save TIFFs** to export one TIFF per visible view per dataset with collision-safe filenames. Cross-section-only TIFFs preserve the selected CLim, colormap, NaN background, and physical aspect ratio without annotations. ROI-mask-only TIFFs contain a white ROI on black background at the corresponding cross-section export dimensions; an accepted ROI is required.
 
 ### 11. Freehand ROI Selection (New in v1.3.0)
 
 Click **Freehand ROI**, select a dataset and XY/X–D/Y–D view, and draw a closed region. **Confirm ROI** previews the selection, **Restart ROI** redraws it, and **Accept ROI** saves it. Accepted ROIs are shown as translucent red overlays in linked views. Use **Add Another ROI** to intersect another selection with the existing N-D mask, **Show ROI** to toggle the overlay, or **Erase ROI** to clear the selection. Source image arrays are not modified.
 
-The current ROI selection is accessible using `getappdata(fig,'ROISelection')`, including its logical `mask` and selected `pixelValues`. Requesting a second output, `[fig,mask]`, waits for ROI acceptance (or viewer closure).
+The current ROI selection is accessible using `getappdata(fig,'ROISelection')`, including its logical `mask` and selected `pixelValues`. Requesting a second output, `[fig,mask]`, waits until **Finish ROI Selection** is clicked (or the viewer is closed). Finishing disables **Add Another ROI**, **Erase ROI**, and **Finish ROI Selection**, but leaves the viewer open. Set `initialView.skipROISelection = true` to bypass selection and return `[]`.
 
 ---
 
@@ -271,14 +279,14 @@ fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
 | `nanColor` | RGB triplet, N-by-3 RGB matrix, or N-cell array of RGB triplets | `[0.25 0.25 0.25]` |
 | `sliderPosition` | Position of navigation controls (`"bottom"` or `"right"`) | `"bottom"` |
 | `dimensionRatio` | Relative physical spacing `[X Y D]` | `[1 1 1]` |
-| `initialView` | Struct: `indices`, `averageRanges`, `orthogonal`, `orthDimension`, `xyPositions`, `xyAverageRanges`, `roiMask` | `struct()` |
+| `initialView` | Struct: `indices`, `averageRanges`, `orthogonal`, `orthDimension`, `xyPositions`, `xyAverageRanges`, `roiMask`, `skipROISelection` | `struct()` |
 | `exportOptions` | Struct: `outputFolder` and `exportMode` (`"figureAnnotations"`, `"crossSectionOnly"`, or `"roiMaskOnly"`) | `struct()` (current folder, figure annotations) |
 
 ### Output
 
 `fig` — Handle to the MATLAB UIFigure containing the interactive viewer.
 
-`mask` (optional) — Logical accepted ROI mask; requesting this second output waits for acceptance. An ROI refined across planes can produce an N-D intersection mask. If the viewer closes before acceptance, returns `[]`.
+`mask` (optional) — Logical accepted ROI mask; requesting this second output waits for **Finish ROI Selection** (unless `initialView.skipROISelection` is true). An ROI refined across planes can produce an N-D intersection mask. If the viewer closes before acceptance, returns `[]`.
 
 ---
 
@@ -390,7 +398,7 @@ The 2-D ROI is replicated across the remaining data dimension. **Save TIFFs** ex
 ### Example 5c: Retrieve an Interactively Selected ROI
 
 ```matlab
-[fig,mask] = SliceViewerND(data);  % Waits for ROI acceptance
+[fig,mask] = SliceViewerND(data);  % Waits for Finish ROI Selection
 % Alternatively, with a single output:
 % roi = getappdata(fig,'ROISelection');
 % mask = roi.mask;
@@ -460,7 +468,8 @@ The orthogonal images and position indicators update automatically.
 | Save TIFFs | Export each visible view for each dataset | — |
 | Freehand ROI / Add Another ROI | Draw a new ROI or refine the existing mask | — |
 | Show ROI | Toggle accepted red ROI overlays | — |
-| Erase ROI | Clear the accepted ROI mask | — |
+| Erase ROI | Clear the accepted ROI mask before finalization | — |
+| Finish ROI Selection | Finalize the accepted mask, return the optional mask output, and lock ROI editing | — |
 
 ### Keyboard Navigation Notes
 
@@ -542,6 +551,15 @@ Compatibility may depend on the MATLAB release and availability of the required 
 ---
 
 ## Version History
+
+### v1.3.1 — November 22, 2026
+
+**ROI Finalization and Editing Lock**
+
+- Added **Finish ROI Selection** to explicitly finalize and return the latest accepted mask through the optional second output.
+- Preserved the combined intersection mask when multiple ROIs are accepted in different planes.
+- Disabled **Add Another ROI**, **Erase ROI**, and **Finish ROI Selection** after finalization while keeping the viewer open for visualization and TIFF export.
+- Added `initialView.skipROISelection` to bypass ROI selection and return an empty mask.
 
 ### v1.3.0 — November 22, 2026
 
