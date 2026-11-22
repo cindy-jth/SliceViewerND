@@ -1,5 +1,5 @@
 function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
-    figName, fig, nanColor, sliderPosition, nDimensions, dimensionRatio)
+    figName, fig, nanColor, sliderPosition, dimensionRatio, initialView, exportOptions)
 % SLICEVIEWERND Interactive N-dimensional MATLAB image viewer and comparator.
 %
 %   FIG = SLICEVIEWERND(DATA) displays slices of a real-valued numeric array.
@@ -11,7 +11,7 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
 %
 %   FIG = SliceViewerND(DATA)
 %   FIG = SliceViewerND(DATA, DISPLAYRANGE, CMAP, DIMNAMES, IMAGENAMES, ...
-%       FIGNAME, FIG, NANCOLOR, SLIDERPOSITION, NDIMENSIONS, DIMENSIONRATIO)
+%       FIGNAME, FIG, NANCOLOR, SLIDERPOSITION, DIMENSIONRATIO, INITIALVIEW, EXPORTOPTIONS)
 %
 % INPUT ARGUMENTS
 %
@@ -68,16 +68,35 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
 %       "bottom" or "right" for dimension-navigation controls.
 %       Default: "bottom".
 %
-%   NDIMENSIONS
-%       Explicit dimensionality, including trailing singleton dimensions.
-%       Must be an integer at least max(3,ndims(A),ndims(B),...).
-%       Default: max(3, maximum ndims among input arrays).
-%
 %   DIMENSIONRATIO
 %       Positive, finite sample-spacing ratios [X Y D]. D is the currently
 %       selected orthogonal dimension. Used for display aspect ratios:
 %       XY -> X:Y; X-D -> X:D; Y-D -> D:Y.
 %       Default: [1 1 1].
+%
+%   INITIALVIEW
+%       Optional struct defining the initial view. Fields (all optional):
+%         .indices       1-by-(N-2) slice indices for dimensions 3:N.
+%         .averageRanges (N-2)-by-2 inclusive averaging ranges; rows
+%                        [NaN NaN] leave that dimension unaveraged.
+%         .orthogonal    Logical flag to show orthogonal views initially.
+%         .orthDimension Index 1...(N-2) of the orthogonal dimension.
+%         .xyPositions   [X Y] cross-sectional positions.
+%         .xyAverageRanges 2-by-2 inclusive X and Y averaging ranges;
+%                        [NaN NaN] rows leave that axis unaveraged.
+%       Omitted fields use the usual defaults. Default: struct().
+%
+%       Example: initialView = struct('indices',[25 3], ...
+%           'averageRanges',[10 30; NaN NaN]);
+%
+%   EXPORTOPTIONS
+%       Optional scalar struct with fields (both optional):
+%         .outputFolder    String or character destination folder path.
+%                          Default: pwd.
+%         .crossSectionOnly Logical scalar; true exports only image pixels,
+%                          without colorbar, axes, labels, titles, or lines.
+%                          False exports the decorated view. Default: false.
+%       Both settings can be changed in the GUI before saving TIFFs.
 %
 % OUTPUT
 %
@@ -96,8 +115,11 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
 %
 %   2. SLICE AND KEYBOARD NAVIGATION
 %       Each dimension beyond X and Y has a slider; positions are rounded
-%       to integer indices. Click a position slider, then use left/right
+%       to integer indices. Click or scroll within 20 pixels of a position slider, then use left/right
 %       arrow keys to step by one index, subject to slider limits and focus.
+%       Hovering within 20 pixels and scrolling selects and moves that slider;
+%       four scroll units correspond to one index, with faster scrolling
+%       producing proportionally larger changes.
 %       Supported controls include slice sliders, averaging-window sliders,
 %       and orthogonal X/Y position sliders. Disabled sliders do not move.
 %
@@ -128,6 +150,16 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
 %       retains its own CLim and colormap. NaN pixels reveal the specified
 %       axes background color. Display changes do not alter source data.
 %
+%   6. SAVE CURRENT VIEWS
+%       Enter an output directory in the Export folder field and click
+%       Save TIFFs. One TIFF is saved per visible view and dataset.
+%       Filenames encode the dataset, view, selected indices or averaging
+%       ranges, orthogonal dimension, X/Y cross-sections, CLim, and ratios.
+%       Existing files are not overwritten; numbered suffixes are used.
+%       Cross-section only exports use the current CLim, colormap, NaN
+%       background, and physical aspect ratio, without decorations/overlays.
+%       Nearest-neighbor resizing preserves colors and matches the GUI aspect.
+%
 % EXAMPLES
 %
 %   Example 1: Basic 3D viewer (image title defaults to variable name)
@@ -143,13 +175,13 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
 %       volume = rand(512,1024,256);
 %       dx = 5; dy = 5; dz = 2;  % micrometers per pixel
 %       fig = SliceViewerND(volume,[0 1],gray(256),"Depth",[], ...
-%           "OCT Volume",[],[0.25 0.25 0.25],"right",3,[dx dy dz]);
+%           "OCT Volume",[],[0.25 0.25 0.25],"right",[dx dy dz]);
 %
 %   Example 4: Higher-dimensional dataset
 %       volume = rand(256,512,100,20,5);
 %       fig = SliceViewerND(volume,[0 1],gray(256), ...
 %           ["Depth","Time","Repetition"],[],"5D Viewer",[], ...
-%           [0.25 0.25 0.25],"bottom",5,[1 1 2]);
+%           [0.25 0.25 0.25],"bottom",[1 1 2]);
 %
 %   Example 5: Three synchronized images with independent display settings
 %       A = rand(128,128,40);
@@ -159,7 +191,7 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
 %           {[0 1],[0 10],[0 100]}, ...
 %           {gray(256),turbo(256),hot(256)}, ...
 %           "Depth",["Structural","Angiography","Dynamics"], ...
-%           "Comparison",[],[0.2 0.2 0.2],"bottom",3,[1 1 1]);
+%           "Comparison",[],[0.2 0.2 0.2],"bottom",[1 1 1]);
 %
 %   Example 6: Automatic names for a named cell-array variable
 %       datasets = {rand(64,64,10),rand(64,64,10)};
@@ -172,12 +204,14 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
 %   - Averaging omits NaN values, including padded regions.
 %   - Physical ratios affect visualization only, not the underlying data.
 %   - Input arrays are not modified in the caller's workspace.
+%   - Dimensionality is inferred automatically; trailing singleton dimensions
+%     are not shown as separate navigation dimensions.
 %
 % AUTHOR AND VERSION INFORMATION
 %
 %   Author:       Tianhui (Cindy) Jie
-%   Date:         November 20, 2026
-%   Version:      1.2.2
+%   Date:         November 22, 2026
+%   Version:      1.2.3
 %   License:      GNU General Public License v3.0
 %
 %   Copyright (c) 2026 Tianhui (Cindy) Jie
@@ -199,6 +233,22 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
 %       https://chatgpt.com/
 %
 % VERSION HISTORY
+%   v1.2.3 (2026-11-22)
+%       - Added mouse-wheel navigation for slice, averaging-window, and
+%         X/Y position sliders, including nearby-slider hover selection,
+%         fractional scroll accumulation, and keyboard focus tracking.
+%       - Inferred dimensionality automatically, removing the NDIMENSIONS
+%         positional input and shifting subsequent inputs accordingly.
+%       - Added INITIALVIEW to configure initial slice indices, averaging
+%         ranges, orthogonal views, and X/Y cross-section positions.
+%       - Added GUI TIFF export with a selectable destination folder,
+%         cross-section-only option, and descriptive, collision-safe names.
+%       - Added final EXPORTOPTIONS struct for outputFolder and
+%         crossSectionOnly; optional struct inputs also accept [].
+%       - Exported XY, X-D, and Y-D images with current colormap, CLim,
+%         NaN background, and physical aspect ratios matching the GUI.
+%         Cross-section-only TIFFs omit axes and overlays and use
+%         nearest-neighbor resizing to preserve displayed colors.
 %   v1.2.2 (2026-11-20)
 %       - Placed all dimension and X/Y controls side by side in one row
 %         for the bottom layout, with matching slider, Average button,
@@ -246,8 +296,39 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
         fig = []
         nanColor = [0.25 0.25 0.25]
         sliderPosition (1,1) string {mustBeMember(sliderPosition,["bottom","right"])} = "bottom"
-        nDimensions (1,1) double = NaN
         dimensionRatio (1,3) double {mustBePositive,mustBeFinite} = [1 1 1]
+        initialView struct = struct()
+        exportOptions struct = struct()
+    end
+
+    % Treat [] as an omitted optional configuration.
+    if isempty(initialView), initialView = struct(); end
+    if isempty(exportOptions), exportOptions = struct(); end
+
+    % Validate export configuration before constructing the GUI.
+    validExportFields = {'outputFolder','crossSectionOnly'};
+    if ~isscalar(exportOptions) || ...
+            ~all(ismember(fieldnames(exportOptions),validExportFields))
+        error('SliceViewerND:ExportOptions', ...
+            'EXPORTOPTIONS must be a scalar struct with outputFolder and/or crossSectionOnly.');
+    end
+    exportFolder = string(pwd);
+    crossSectionOnly = false;
+    if isfield(exportOptions,'outputFolder')
+        value = exportOptions.outputFolder;
+        if ~(ischar(value) && isrow(value)) && ...
+                ~(isstring(value) && isscalar(value) && ~ismissing(value))
+            error('SliceViewerND:ExportOptions','outputFolder must be a text scalar.');
+        end
+        exportFolder = string(value);
+    end
+    if isfield(exportOptions,'crossSectionOnly')
+        value = exportOptions.crossSectionOnly;
+        if ~isscalar(value) || ...
+                ~(islogical(value) || (isnumeric(value) && isreal(value) && ismember(value,[0 1])))
+            error('SliceViewerND:ExportOptions','crossSectionOnly must be a logical scalar.');
+        end
+        crossSectionOnly = logical(value);
     end
 
     % Capture the caller variable name before wrapping numeric input in a cell.
@@ -275,13 +356,8 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
     if nImages<1 || any(cellfun(@(a) ~isnumeric(a) || ~isreal(a) || isempty(a),data))
         error('SliceViewerND:Data','Provide nonempty real numeric arrays.');
     end
-    if isnan(nDimensions)
-        nDimensions = max([3,cellfun(@ndims,data)]);
-    end
-    if ~isscalar(nDimensions) || ~isfinite(nDimensions) || nDimensions~=fix(nDimensions) || ...
-            nDimensions<max([3,cellfun(@ndims,data)])
-        error('SliceViewerND:Dimensions','Invalid nDimensions.');
-    end
+    % Infer dimensionality automatically from the input arrays.
+    nDimensions = max([3,cellfun(@ndims,data)]);
     allSizes = ones(nImages,nDimensions);
     for k=1:nImages
         for d=1:nDimensions, allSizes(k,d)=size(data{k},d); end
@@ -356,6 +432,73 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
     yPos = max(1,round(nY/2));
     xyAvgEnabled = false(1,2); % [X Y]
     xyAvgRanges = [1 nX; 1 nY];
+    % Validate and apply optional initial-view configuration before UI creation.
+    validFields = {'indices','averageRanges','orthogonal', ...
+        'orthDimension','xyPositions','xyAverageRanges'};
+    if ~isscalar(initialView) || ~all(ismember(fieldnames(initialView),validFields))
+        error('SliceViewerND:InitialView','INITIALVIEW must be a scalar struct with recognized fields.');
+    end
+    if isfield(initialView,'indices')
+        v = initialView.indices;
+        if ~isnumeric(v) || ~isequal(size(v),[1 nSliders]) || ...
+                any(~isfinite(v)) || any(v~=round(v)) || any(v<1 | v>nDims)
+            error('SliceViewerND:InitialView','indices must contain valid integer positions for dimensions 3:N.');
+        end
+        idx = double(v);
+    end
+    if isfield(initialView,'averageRanges')
+        v = initialView.averageRanges;
+        if ~isnumeric(v) || ~isequal(size(v),[nSliders 2])
+            error('SliceViewerND:InitialView','averageRanges must be (N-2)-by-2.');
+        end
+        for d=1:nSliders
+            r = v(d,:);
+            if all(isnan(r)), continue; end
+            if any(~isfinite(r)) || any(r~=round(r)) || r(1)<1 || r(2)>nDims(d) || r(1)>r(2)
+                error('SliceViewerND:InitialView','Invalid averaging range for dimension %d.',d+2);
+            end
+            avgEnabled(d) = true;
+            avgRanges(d,:) = r;
+        end
+    end
+    if isfield(initialView,'orthogonal')
+        v = initialView.orthogonal;
+        if ~isscalar(v) || ~(islogical(v) || (isnumeric(v) && ismember(v,[0 1])))
+            error('SliceViewerND:InitialView','orthogonal must be logical scalar.');
+        end
+        orthEnabled = logical(v);
+    end
+    if isfield(initialView,'orthDimension')
+        v = initialView.orthDimension;
+        if ~isnumeric(v) || ~isscalar(v) || ~isfinite(v) || v~=round(v) || v<1 || v>nSliders
+            error('SliceViewerND:InitialView','orthDimension must be an integer from 1 to N-2.');
+        end
+        orthDim = double(v);
+    end
+    if isfield(initialView,'xyPositions')
+        v = initialView.xyPositions;
+        if ~isnumeric(v) || ~isequal(size(v),[1 2]) || any(~isfinite(v)) || ...
+                any(v~=round(v)) || any(v<1 | v>[nX nY])
+            error('SliceViewerND:InitialView','xyPositions must contain valid [X Y] indices.');
+        end
+        xPos = v(1); yPos = v(2);
+    end
+    if isfield(initialView,'xyAverageRanges')
+        v = initialView.xyAverageRanges;
+        if ~isnumeric(v) || ~isequal(size(v),[2 2])
+            error('SliceViewerND:InitialView','xyAverageRanges must be 2-by-2.');
+        end
+        xySizesInitial = [nX nY];
+        for d=1:2
+            r = v(d,:);
+            if all(isnan(r)), continue; end
+            if any(~isfinite(r)) || any(r~=round(r)) || r(1)<1 || r(2)>xySizesInitial(d) || r(1)>r(2)
+                error('SliceViewerND:InitialView','Invalid X/Y averaging range.');
+            end
+            xyAvgEnabled(d) = true;
+            xyAvgRanges(d,:) = r;
+        end
+    end
     currentDisplayRange = ranges;
     selectedImage = 1;
     currentDimensionRatio = dimensionRatio;
@@ -364,6 +507,10 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
     activeSlider = [];  % Last operated slider (slice, averaging window, X or Y).
     activeSliderKind = '';
     activeSliderDim = [];
+    wheelSelectedSlider = []; % Last slider selected by wheel or click.
+    wheelHoverMargin = 20;    % Pixel hit area around each slider.
+    wheelRemainder = 0;       % Preserve fractional high-resolution wheel motion.
+    wheelUnitsPerIndex = 4;  % Sensitivity: four wheel units per slider index.
 
     if isempty(fig)
         % Choose an initial window size based on the physical XY image shape.
@@ -391,12 +538,22 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
     end
 
     outerGL = uigridlayout(fig,[2 1]);
-    outerGL.RowHeight = {45,'1x'};
+    outerGL.RowHeight = {85,'1x'};
     outerGL.ColumnWidth = {'1x'};
     outerGL.Padding = [12 12 12 12];
     outerGL.RowSpacing = 8;
 
-    toolbarGL = uigridlayout(outerGL,[1 7]);
+    toolbarContainerGL = uigridlayout(outerGL,[2 1]);
+    toolbarContainerGL.Layout.Row = 1;
+    toolbarContainerGL.Layout.Column = 1;
+    toolbarContainerGL.RowHeight = {45,32};
+    toolbarContainerGL.ColumnWidth = {'1x'};
+    toolbarContainerGL.RowSpacing = 4;
+    toolbarContainerGL.Padding = [0 0 0 0];
+
+    toolbarGL = uigridlayout(toolbarContainerGL,[1 7]);
+    toolbarGL.Layout.Row = 1;
+    toolbarGL.Layout.Column = 1;
     toolbarGL.Layout.Row = 1;
     toolbarGL.Layout.Column = 1;
     toolbarGL.RowHeight = {'1x'};
@@ -449,6 +606,23 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
     ratioDLabel = uilabel(ratioGL,'Text','D','HorizontalAlignment','center','Visible','off');
     ratioDField = uieditfield(ratioGL,'numeric','Value',dimensionRatio(3), ...
         'Limits',[eps Inf],'ValueDisplayFormat','%.5g','Visible','off');
+
+    exportGL = uigridlayout(toolbarContainerGL,[1 4]);
+    exportGL.Layout.Row = 2;
+    exportGL.Layout.Column = 1;
+    exportGL.RowHeight = {'1x'};
+    exportGL.ColumnWidth = {95,'1x',160,125};
+    exportGL.ColumnSpacing = 7;
+    exportGL.Padding = [0 0 0 0];
+    uilabel(exportGL,'Text','Export folder:','HorizontalAlignment','right');
+    exportFolderField = uieditfield(exportGL,'text','Value',char(exportFolder), ...
+        'Placeholder','Full path to output folder');
+    crossSectionButton = uibutton(exportGL,'state', ...
+        'Text','Cross-section only','Value',crossSectionOnly);
+    crossSectionButton.Layout.Column = 3;
+    saveTiffButton = uibutton(exportGL,'push','Text','Save TIFFs');
+    saveTiffButton.Layout.Column = 4;
+    saveTiffButton.ButtonPushedFcn = @(~,~) saveCurrentViews();
 
 
     if sliderPosition=="bottom"
@@ -818,9 +992,191 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
     imageSelector.ValueChangedFcn = @(~,event) selectImage(event.Value);
 
     fig.WindowKeyPressFcn = @sliceKeyboardCallback;
+    fig.WindowButtonDownFcn = @sliderMouseClickCallback;
+    fig.WindowScrollWheelFcn = @sliderMouseWheelCallback;
 
-    updateImages();
+    % Synchronize initial state to UI controls without invoking user callbacks.
+    orthDropdown.Value = orthDim;
+    for d=1:nSliders
+        sliders(d).Value = idx(d);
+        startFields(d).Value = avgRanges(d,1);
+        endFields(d).Value = avgRanges(d,2);
+        rangeLabels(d).Text = sprintf('(%d slices)',diff(avgRanges(d,:))+1);
+        if avgEnabled(d)
+            avgButtons(d).Value = true;
+            sliders(d).Enable = 'off';
+            windowSliders(d).Visible = 'on';
+            windowLabels(d).Visible = 'on';
+            updateWindowSlider(d);
+        end
+    end
+    initialXYPositions = [xPos yPos];
+    for d=1:2
+        xySliders(d).Value = initialXYPositions(d);
+        xyStartFields(d).Value = xyAvgRanges(d,1);
+        xyEndFields(d).Value = xyAvgRanges(d,2);
+        xyRangeLabels(d).Text = sprintf('(%d slices)',diff(xyAvgRanges(d,:))+1);
+        if xyAvgEnabled(d)
+            xyAvgButtons(d).Value = true;
+            xySliders(d).Enable = 'off';
+            xyWindowSliders(d).Visible = 'on';
+            xyWindowLabels(d).Visible = 'on';
+            updateXYWindowSlider(d);
+        end
+    end
+    if orthEnabled
+        orthButton.Value = true;
+        orthToggle(true);
+    else
+        updateImages();
+    end
     updateDimensionRatios();
+
+    function saveCurrentViews()
+        % Export either the decorated axes or only their image pixels.
+        outputDir = strtrim(char(exportFolderField.Value));
+        if isempty(outputDir)
+            uialert(fig,'Enter a destination folder path.','Missing Export Folder');
+            return;
+        end
+        if ~isfolder(outputDir)
+            answer = uiconfirm(fig,sprintf('Create export folder?\n%s',outputDir), ...
+                'Create Folder','Options',{'Create','Cancel'}, ...
+                'DefaultOption',1,'CancelOption',2);
+            if ~strcmp(answer,'Create'), return; end
+            [ok,msg] = mkdir(outputDir);
+            if ~ok
+                uialert(fig,msg,'Cannot Create Folder');
+                return;
+            end
+        end
+        saveTiffButton.Enable = 'off';
+        cleanup = onCleanup(@() set(saveTiffButton,'Enable','on'));
+        drawnow;
+        nSaved = 0;
+        try
+            for im=1:nImages
+                sharedParts = strings(1,nSliders);
+                for d=1:nSliders
+                    if avgEnabled(d)
+                        sharedParts(d) = sprintf('D%d-avg%d-%d',d+2,avgRanges(d,1),avgRanges(d,2));
+                    else
+                        sharedParts(d) = sprintf('D%d-i%d',d+2,idx(d));
+                    end
+                end
+                shared = strjoin(sharedParts,'_');
+                lim = currentDisplayRange(im,:);
+                climPart = sprintf('CLim-%0.6g-%0.6g',lim(1),lim(2));
+                ratioPart = sprintf('Ratio-%0.6g-%0.6g-%0.6g',currentDimensionRatio);
+                prefix = sprintf('%s_%s_%s_%s',safeFilePart(imageNames(im)), ...
+                    shared,climPart,ratioPart);
+                saveOneView(axMain(im),hMain(im),im,sprintf('%s_XY',prefix),'XY');
+                nSaved = nSaved+1;
+                if orthEnabled
+                    if xyAvgEnabled(2)
+                        yPart = sprintf('Yavg%d-%d',xyAvgRanges(2,1),xyAvgRanges(2,2));
+                    else
+                        yPart = sprintf('Y%d',yPos);
+                    end
+                    if xyAvgEnabled(1)
+                        xPart = sprintf('Xavg%d-%d',xyAvgRanges(1,1),xyAvgRanges(1,2));
+                    else
+                        xPart = sprintf('X%d',xPos);
+                    end
+                    saveOneView(axXD(im),hXD(im),im,sprintf('%s_XD-D%d_%s_%s', ...
+                        prefix,orthDim+2,yPart,xPart),'XD');
+                    saveOneView(axYD(im),hYD(im),im,sprintf('%s_YD-D%d_%s_%s', ...
+                        prefix,orthDim+2,xPart,yPart),'YD');
+                    nSaved = nSaved+2;
+                end
+            end
+            uialert(fig,sprintf('Saved %d TIFF files to:\n%s',nSaved,outputDir), ...
+                'Export Complete','Icon','success');
+        catch ME
+            uialert(fig,sprintf('Saved %d TIFF files before an error:\n%s', ...
+                nSaved,ME.message),'Export Failed');
+        end
+        clear cleanup;
+
+        function saveOneView(ax,hImage,imageIndex,baseName,viewKind)
+            % Avoid overwriting previous exports of the same view.
+            baseName = safeFilePart(baseName);
+            filePath = fullfile(outputDir,[baseName '.tif']);
+            suffix = 2;
+            while isfile(filePath)
+                filePath = fullfile(outputDir,sprintf('%s_%03d.tif',baseName,suffix));
+                suffix = suffix+1;
+            end
+            % Apply the live GUI settings to every exported view, even when
+            % the viewer has not been redrawn since the last field edit.
+            limits = currentDisplayRange(imageIndex,:);
+            clim(ax,limits);
+            switch viewKind
+                case 'XY'
+                    pixelSpacing = currentDimensionRatio([1 2]);
+                case 'XD'
+                    pixelSpacing = currentDimensionRatio([1 3]);
+                case 'YD'
+                    pixelSpacing = currentDimensionRatio([3 2]);
+            end
+            daspect(ax,[pixelSpacing 1]);
+            if crossSectionButton.Value
+                % Render precisely one RGB pixel per displayed image sample.
+                % This excludes ticks, labels, colorbars, and dashed lines.
+                values = double(hImage.CData);
+                map = colormap(ax);
+                normalized = (values-limits(1))/(limits(2)-limits(1));
+                indices = max(1,min(size(map,1), ...
+                    floor(normalized*size(map,1))+1));
+                indices(~isfinite(indices)) = 1;
+                rgb = ind2rgb(indices,map);
+                invalid = ~isfinite(values);
+                for channel=1:3
+                    layer = rgb(:,:,channel);
+                    layer(invalid) = nanColors(imageIndex,channel);
+                    rgb(:,:,channel) = layer;
+                end
+                % Match the displayed physical width/height, not the raw
+                % array dimensions. Replicate pixels (no interpolation) so
+                % the selected CLim/colormap colors are not modified.
+                [nr,nc,~] = size(rgb);
+                % MATLAB daspect([sx sy 1]) specifies DATA units per
+                % DISPLAY unit. Thus the visible width/height is
+                % (nc/sx)/(nr/sy), NOT (nc*sx)/(nr*sy).
+                % This must match the GUI daspect() call exactly.
+                targetAspect = (nc*pixelSpacing(2))/(nr*pixelSpacing(1));
+                % Preserve the original sample count in each direction;
+                % enlarge only the direction necessary for the aspect.
+                if targetAspect >= nc/nr
+                    outCols = max(nc,round(nr*targetAspect));
+                    outRows = nr;
+                else
+                    outCols = nc;
+                    outRows = max(nr,round(nc/targetAspect));
+                end
+                % Limit pathological ratios to prevent huge allocations.
+                maxOutputSide = 16384;
+                if max(outRows,outCols)>maxOutputSide
+                    scale = maxOutputSide/max(outRows,outCols);
+                    outRows = max(1,round(outRows*scale));
+                    outCols = max(1,round(outCols*scale));
+                end
+                rowIndices = min(nr,max(1,round(((1:outRows)-0.5)*nr/outRows+0.5)));
+                colIndices = min(nc,max(1,round(((1:outCols)-0.5)*nc/outCols+0.5)));
+                rgb = rgb(rowIndices,colIndices,:);
+                imwrite(uint8(round(255*rgb)),filePath,'tif','Compression','none');
+            else
+                exportgraphics(ax,filePath,'Resolution',300,'BackgroundColor','current');
+            end
+        end
+    end
+
+    function name = safeFilePart(value)
+        name = char(string(value));
+        name = regexprep(name,'[^a-zA-Z0-9._-]','-');
+        name = regexprep(name,'-+','-');
+        if isempty(name), name = 'Image'; end
+    end
 
     function selectImage(value)
         selectedImage = value;
@@ -887,6 +1243,129 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
         activeSliderDim = d;
     end
 
+    function sliderMouseClickCallback(~,~)
+        % Select only when the user actually clicks an enabled, visible
+        % slider. Clicking elsewhere clears wheel selection.
+        wheelSelectedSlider = [];
+        wheelRemainder = 0;
+        candidates = [sliders(:); windowSliders(:); xySliders(:); xyWindowSliders(:)];
+        clicked = [];
+        try
+            clicked = fig.CurrentObject;
+        catch
+        end
+        % CurrentObject may refer to the slider's internal graphics child;
+        % use the mouse location as a fallback for uifigure controls.
+        mouse = fig.CurrentPoint;
+        for k=1:numel(candidates)
+            h = candidates(k);
+            if ~isvalid(h) || ~strcmp(h.Enable,'on') || ...
+                    ~sliderVisibleInLayout(h)
+                continue;
+            end
+            pos = getpixelposition(h,true);
+            over = mouse(1)>=pos(1) && mouse(1)<=pos(1)+pos(3) && ...
+                   mouse(2)>=pos(2) && mouse(2)<=pos(2)+pos(4);
+            if isequal(clicked,h) || over
+                wheelSelectedSlider = h;
+                if k<=nSliders
+                    selectSlider(h,'slice',k);
+                elseif k<=2*nSliders
+                    selectSlider(h,'window',k-nSliders);
+                elseif k<=2*nSliders+2
+                    d = k-2*nSliders;
+                    if d==1, kind='x'; else, kind='y'; end
+                    selectSlider(h,kind,d);
+                else
+                    selectSlider(h,'xywindow',k-2*nSliders-2);
+                end
+                return;
+            end
+        end
+    end
+
+    function tf = sliderVisibleInLayout(h)
+        tf = true;
+        while ~isempty(h) && ~isequal(h,fig)
+            if isprop(h,'Visible') && strcmp(h.Visible,'off')
+                tf = false;
+                return;
+            end
+            h = h.Parent;
+        end
+    end
+
+    function sliderMouseWheelCallback(~,event)
+        % Hovering within 20 px selects the closest enabled, visible slider.
+        % Scroll units accumulate without throttling, preserving speed response.
+        candidates = [sliders(:); windowSliders(:); xySliders(:); xyWindowSliders(:)];
+        mouse = fig.CurrentPoint;
+        best = inf;
+        selectedIndex = 0;
+        for k=1:numel(candidates)
+            candidate = candidates(k);
+            if ~isvalid(candidate) || ~strcmp(candidate.Enable,'on') || ...
+                    ~sliderVisibleInLayout(candidate)
+                continue;
+            end
+            pos = getpixelposition(candidate,true);
+            dx = max([pos(1)-mouse(1), 0, mouse(1)-(pos(1)+pos(3))]);
+            dy = max([pos(2)-mouse(2), 0, mouse(2)-(pos(2)+pos(4))]);
+            distance = hypot(dx,dy);
+            if distance<=wheelHoverMargin && distance<best
+                best = distance;
+                selectedIndex = k;
+            end
+        end
+        if selectedIndex==0, return; end
+        h = candidates(selectedIndex);
+        if isempty(wheelSelectedSlider) || ~isequal(wheelSelectedSlider,h)
+            wheelRemainder = 0;
+        end
+        wheelSelectedSlider = h;
+        if selectedIndex<=nSliders
+            selectSlider(h,'slice',selectedIndex);
+        elseif selectedIndex<=2*nSliders
+            selectSlider(h,'window',selectedIndex-nSliders);
+        elseif selectedIndex<=2*nSliders+2
+            d = selectedIndex-2*nSliders;
+            if d==1, kind='x'; else, kind='y'; end
+            selectSlider(h,kind,d);
+        else
+            selectSlider(h,'xywindow',selectedIndex-2*nSliders-2);
+        end
+        % Ask MATLAB to focus the slider as well; the keyboard handler
+        % independently honors wheel selection if CurrentObject is stale.
+        try, focus(h); catch, end
+        wheelRemainder = wheelRemainder - double(event.VerticalScrollCount)/wheelUnitsPerIndex;
+        steps = fix(wheelRemainder);
+        wheelRemainder = wheelRemainder - steps;
+        if steps==0, return; end
+        d = activeSliderDim;
+        switch activeSliderKind
+            case 'slice'
+                if avgEnabled(d), return; end
+                newValue = min(max(idx(d)+steps,1),nDims(d));
+                if newValue~=idx(d), sliceCallback(d,newValue); end
+            case 'window'
+                width = diff(avgRanges(d,:))+1;
+                maxStart = nDims(d)-width+1;
+                newValue = min(max(avgRanges(d,1)+steps,1),maxStart);
+                if newValue~=avgRanges(d,1), windowCallback(d,newValue); end
+            case 'xywindow'
+                width = diff(xyAvgRanges(d,:))+1;
+                maxStart = xySizes(d)-width+1;
+                newValue = min(max(xyAvgRanges(d,1)+steps,1),maxStart);
+                if newValue~=xyAvgRanges(d,1), xyWindowCallback(d,newValue); end
+            case 'x'
+                newValue = min(max(xPos+steps,1),nX);
+                if newValue~=xPos, positionCallback(1,newValue); end
+            case 'y'
+                newValue = min(max(yPos+steps,1),nY);
+                if newValue~=yPos, positionCallback(2,newValue); end
+        end
+    end
+
     function sliceCallback(d,value)
         selectSlider(sliders(d),'slice',d);
         newIndex = min(max(round(value),1),nDims(d));
@@ -911,7 +1390,8 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
         % MATLAB releases; if unavailable, use the last operated slider.
         try
             focused = fig.CurrentObject;
-            if ~isequal(focused,activeSlider)
+            if ~isequal(focused,activeSlider) && ...
+                    (isempty(wheelSelectedSlider) || ~isequal(wheelSelectedSlider,activeSlider))
                 return;
             end
         catch
