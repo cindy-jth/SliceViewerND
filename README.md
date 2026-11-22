@@ -2,9 +2,9 @@
 
 ### Interactive N-Dimensional Image Viewer for MATLAB
 
-**Version:** 1.2.2  
+**Version:** 1.2.3  
 **Author:** Tianhui (Cindy) Jie  
-**Last Updated:** November 20, 2026  
+**Last Updated:** November 22, 2026  
 **License:** GNU General Public License v3.0 (GPL-3.0-only)
 
 SliceViewerND is an interactive MATLAB visualization tool for exploring multidimensional image arrays.
@@ -15,7 +15,18 @@ Designed for scientific imaging applications, including optical coherence tomogr
 
 ---
 
-## What's New in v1.2.2
+## What's New in v1.2.3
+
+Version 1.2.3 consolidates all improvements since v1.2.2 into one release, including navigation, initialization, and TIFF export.
+
+- **Mouse-wheel navigation:** Hover near a supported position slider (within approximately 20 pixels) and scroll to move it. Four scroll units correspond to one index, with fractional scroll accumulation; faster scrolling can move multiple indices. Arrow-key navigation remains supported.
+- **Automatic dimensionality:** The viewer infers the number of dimensions from the input arrays; the former `nDimensions` positional argument has been removed.
+- **Initial-view configuration:** The optional `initialView` struct sets initial slice indices, averaging ranges, orthogonal-view visibility and dimension, X/Y positions, and X/Y averaging ranges.
+- **TIFF export:** Choose an output folder and click **Save TIFFs** to save the visible XY and, when enabled, X–D and Y–D views for each dataset. Filenames include the view configuration and avoid overwriting existing files.
+- **Cross-section-only export:** Toggle **Cross-section only** to save the image without axes, colorbars, titles, or dashed indicators. Exports use the current colormap, CLim, NaN background, and display aspect ratio; nearest-neighbor resizing preserves pixel colors.
+- **Export options:** The final optional `exportOptions` struct preconfigures `outputFolder` and `crossSectionOnly`.
+
+### What's New in v1.2.2
 
 Version 1.2.2 refines the **navigation-control layout** in both slider configurations, making the X and Y orthogonal controls consistent with the other dimension controls.
 
@@ -65,7 +76,7 @@ Pass `{A, B, C, ...}` to view multiple real-valued numeric arrays in a tiled lay
 
 ### 2. N-Dimensional Slice Navigation
 
-- Supports real-valued numeric arrays with three or more dimensions.
+- Supports real-valued numeric arrays; the number of navigable dimensions is inferred automatically.
 - Displays dimensions 1 and 2 as the Y and X image axes.
 - Provides an independent navigation slider for every dimension beyond the first two.
 - Supports interactive slice selection with integer-index snapping.
@@ -100,7 +111,11 @@ Each keypress:
 
 Disabled sliders cannot be navigated using arrow keys.
 
-### 4. Multidimensional Averaging
+### 4. Mouse-Wheel Navigation (New in v1.2.3)
+
+Hover over or within approximately 20 pixels of a supported slider and scroll to navigate. Four wheel units move one index; fractional wheel motion accumulates and faster scrolling may advance multiple indices. This works with slice sliders, averaging-window position sliders, and X/Y position controls. Slider values remain bounded by valid indices.
+
+### 5. Multidimensional Averaging
 
 Each navigable dimension includes an independent averaging toggle.
 
@@ -114,7 +129,7 @@ When averaging is enabled:
 
 Multiple dimensions can be averaged simultaneously.
 
-### 5. Movable Averaging Windows
+### 6. Movable Averaging Windows
 
 Averaging intervals can be shifted interactively without changing their widths.
 
@@ -129,7 +144,7 @@ The averaging window remains within the valid dimension bounds.
 
 **New in v1.1.0:** Click the Window Position slider and use the left/right arrow keys to shift the entire averaging interval by exactly one index.
 
-### 6. Linked Orthogonal Views
+### 7. Linked Orthogonal Views
 
 Optional orthogonal visualization provides three linked views:
 
@@ -156,7 +171,7 @@ Additional features include:
 
 **New in v1.1.0:** The X and Y location sliders support one-pixel keyboard navigation using the left/right arrow keys.
 
-### 7. Physical Aspect-Ratio Control
+### 8. Physical Aspect-Ratio Control
 
 Specify relative physical sample spacing along X, Y, and D using:
 
@@ -176,7 +191,7 @@ The ratios affect visualization geometry without modifying the underlying image 
 
 Each view is scaled independently, so changing one physical dimension does not unnecessarily alter views that do not contain that dimension.
 
-### 8. Interactive Display Settings
+### 9. Interactive Display Settings
 
 - Adjustable image color limits.
 - Custom MATLAB colormaps.
@@ -184,6 +199,12 @@ Each view is scaled independently, so changing one physical dimension does not u
 - Per-dataset colormaps and NaN background colors.
 - Image selector for choosing which dataset's CLim to edit.
 - Interactive updates without modifying the original data.
+
+---
+
+### 10. Initial View and TIFF Export (New in v1.2.3)
+
+Use `initialView` to initialize the viewer's slice and averaging state, and `exportOptions` to prefill the TIFF export folder and cross-section-only toggle. In the toolbar, choose an export folder, toggle **Cross-section only** as desired, then click **Save TIFFs**. The viewer saves one TIFF per visible view per dataset, without overwriting existing files. Cross-section-only TIFFs omit decorations while preserving the selected image appearance and physical aspect ratio.
 
 ---
 
@@ -215,7 +236,7 @@ fig = SliceViewerND(data);
 
 ```matlab
 fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
-    figName, fig, nanColor, sliderPosition, nDimensions, dimensionRatio);
+    figName, fig, nanColor, sliderPosition, dimensionRatio, initialView, exportOptions);
 ```
 
 ### Input Arguments
@@ -231,8 +252,9 @@ fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
 | `fig` | Existing figure handle | `[]` |
 | `nanColor` | RGB triplet, N-by-3 RGB matrix, or N-cell array of RGB triplets | `[0.25 0.25 0.25]` |
 | `sliderPosition` | Position of navigation controls (`"bottom"` or `"right"`) | `"bottom"` |
-| `nDimensions` | Explicit number of dimensions | `max(3, max(ndims of datasets))` |
 | `dimensionRatio` | Relative physical spacing `[X Y D]` | `[1 1 1]` |
+| `initialView` | Struct: `indices`, `averageRanges`, `orthogonal`, `orthDimension`, `xyPositions`, `xyAverageRanges` | `struct()` |
+| `exportOptions` | Struct: `outputFolder` and `crossSectionOnly` | `struct()` (current folder, decorated TIFFs) |
 
 ### Output
 
@@ -293,7 +315,7 @@ dy = 5;
 dz = 2;
 
 fig = SliceViewerND(data,[0 1],gray(256), ...
-    "Depth",[],"OCT Volume",[],[0.25 0.25 0.25],"right",3,[dx dy dz]);
+    "Depth",[],"OCT Volume",[],[0.25 0.25 0.25],"right",[dx dy dz]);
 ```
 
 The physical sample spacing is used to preserve the relative dimensions of the displayed cross-sections.
@@ -305,12 +327,30 @@ data = rand(256,512,100,20,5);
 
 fig = SliceViewerND(data,[0 1],gray(256), ...
     ["Depth","Time","Repetition"],[], ...
-    "5D Viewer",[],[0.25 0.25 0.25],"bottom",5,[1 1 2]);
+    "5D Viewer",[],[0.25 0.25 0.25],"bottom",[1 1 2]);
 ```
 
 Creates a five-dimensional viewer with independent navigation and averaging controls for Depth, Time, and Repetition.
 
-### Example 5: Keyboard Navigation
+### Example 5: Initial View and Export Options (New in v1.2.3)
+
+```matlab
+data = rand(128,256,50,8);
+initialView = struct('indices',[20 3], ...
+    'averageRanges',[10 30; NaN NaN], ...
+    'orthogonal',true,'orthDimension',1, ...
+    'xyPositions',[100 60]);
+exportOptions = struct('outputFolder',fullfile(pwd,'exports'), ...
+    'crossSectionOnly',true);
+
+fig = SliceViewerND(data,[],gray(256),["Depth","Time"],[], ...
+    "OCT Viewer",[],[0.25 0.25 0.25],"bottom",[1 1 1], ...
+    initialView,exportOptions);
+```
+
+The initial view is configured when the viewer opens. The export folder and cross-section-only setting can still be changed in the toolbar.
+
+### Example 6: Keyboard Navigation
 
 ```matlab
 data = rand(256,512,100);
@@ -369,6 +409,9 @@ The orthogonal images and position indicators update automatically.
 | X/Y/D ratio controls | Adjust physical sample spacing | — |
 | Image selector | Choose dataset whose CLim is edited | — |
 | Color-limit controls | Adjust selected dataset's display range | — |
+| Export folder | Select the directory for saved TIFFs | — |
+| Cross-section only | Toggle image-only TIFFs without annotations or overlays | — |
+| Save TIFFs | Export each visible view for each dataset | — |
 
 ### Keyboard Navigation Notes
 
@@ -450,6 +493,19 @@ Compatibility may depend on the MATLAB release and availability of the required 
 ---
 
 ## Version History
+
+### v1.2.3 — November 22, 2026
+
+**Mouse-Wheel Navigation, Automatic Dimensionality, Initial Views, and TIFF Export**
+
+- Added mouse-wheel navigation with proximity-based slider selection and fractional-scroll accumulation.
+- Removed the explicit `nDimensions` argument; dimensionality is inferred from input data.
+- Added the optional `initialView` struct for initial navigation, averaging, and orthogonal-view settings.
+- Added GUI TIFF export of visible views with configurable destination and collision-safe descriptive filenames.
+- Added cross-section-only TIFF exports without axes, colorbars, labels, or indicator overlays.
+- Added the optional final `exportOptions` struct (`outputFolder`, `crossSectionOnly`).
+- Preserved display colormaps, CLim, NaN background, and physical aspect ratios in TIFF exports.
+
 
 ### v1.2.2 — November 20, 2026
 
