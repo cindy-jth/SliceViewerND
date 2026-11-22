@@ -1,4 +1,4 @@
-function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
+function [fig, mask] = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
     figName, fig, nanColor, sliderPosition, dimensionRatio, initialView, exportOptions)
 % SLICEVIEWERND Interactive N-dimensional MATLAB image viewer and comparator.
 %
@@ -10,6 +10,7 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
 % SYNTAX (all inputs are positional and may be omitted from the right)
 %
 %   FIG = SliceViewerND(DATA)
+%   [FIG,MASK] = SliceViewerND(DATA)  % waits for an accepted freehand ROI
 %   FIG = SliceViewerND(DATA, DISPLAYRANGE, CMAP, DIMNAMES, IMAGENAMES, ...
 %       FIGNAME, FIG, NANCOLOR, SLIDERPOSITION, DIMENSIONRATIO, INITIALVIEW, EXPORTOPTIONS)
 %
@@ -84,24 +85,37 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
 %         .xyPositions   [X Y] cross-sectional positions.
 %         .xyAverageRanges 2-by-2 inclusive X and Y averaging ranges;
 %                        [NaN NaN] rows leave that axis unaveraged.
+%         .roiMask       Initial binary ROI mask. Missing dimensions are
+%                        replicated across the data; smaller dimensions
+%                        must divide their corresponding data dimensions.
 %       Omitted fields use the usual defaults. Default: struct().
 %
 %       Example: initialView = struct('indices',[25 3], ...
 %           'averageRanges',[10 30; NaN NaN]);
 %
 %   EXPORTOPTIONS
-%       Optional scalar struct with fields (both optional):
-%         .outputFolder    String or character destination folder path.
-%                          Default: pwd.
-%         .crossSectionOnly Logical scalar; true exports only image pixels,
-%                          without colorbar, axes, labels, titles, or lines.
-%                          False exports the decorated view. Default: false.
+%       Optional scalar struct with exactly two supported fields:
+%         .outputFolder  Destination folder path (string or char). Default: pwd.
+%         .exportMode    One of 'figureAnnotations', 'crossSectionOnly',
+%                        or 'roiMaskOnly'. Default: 'figureAnnotations'.
+%       figureAnnotations exports decorated axes with annotations;
+%       crossSectionOnly exports image pixels at displayed physical aspect;
+%       roiMaskOnly exports an accepted ROI as a black-and-white TIFF
+%       (white ROI, black background) at the same size as crossSectionOnly.
 %       Both settings can be changed in the GUI before saving TIFFs.
 %
 % OUTPUT
 %
 %   FIG
 %       Handle to the UIFigure containing the viewer.
+%
+%   MASK
+%       Logical mask, initially 2D for one ROI; a second ROI in a
+%       different plane returns an N-dimensional intersection mask. Requesting
+%       MASK pauses the function until an ROI is accepted; close
+%       the viewer to cancel (returns []). With only FIG, the viewer stays
+%       nonblocking and the latest mask is available using
+%       getappdata(fig,'ROISelection').mask.
 %
 % INTERACTIVE FEATURES
 %
@@ -144,13 +158,29 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
 %       Cross-sectional positions; indicator lines show intersections and
 %       the main slice or averaging interval in the orthogonal views.
 %
-%   5. PHYSICAL ASPECT RATIOS AND DISPLAY SETTINGS
+%   5. FREEHAND REGION OF INTEREST
+%       Click Freehand ROI after the yellow main-position text to open an isolated
+%       copy of a displayed XY, X-D, or Y-D view. Select the dataset/view,
+%       then click Draw ROI and trace a closed freehand region. Click
+%       Confirm ROI to preview a translucent red mask, Restart ROI to
+%       redraw, or Accept ROI to save the approved mask. Retrieve
+%       the logical mask and selected pixel values using:
+%           roi = getappdata(fig,'ROISelection');
+%           mask = roi.mask; values = roi.pixelValues;
+%       After accepting one ROI, the main toolbar changes to Add Another ROI
+%       and Erase ROI. Existing masks appear red in the drawing window,
+%       while new candidates appear yellow. Accept ROI closes that window.
+%       Accepting computes the intersection of their extruded masks,
+%       updates the main viewer, and stores a logical volume mask.
+%       No source data are modified.
+%
+%   6. PHYSICAL ASPECT RATIOS AND DISPLAY SETTINGS
 %       The X/Y/D ratio fields control each view's physical aspect ratio.
 %       The D field appears when orthogonal views are enabled. Each image
 %       retains its own CLim and colormap. NaN pixels reveal the specified
 %       axes background color. Display changes do not alter source data.
 %
-%   6. SAVE CURRENT VIEWS
+%   7. SAVE CURRENT VIEWS
 %       Enter an output directory in the Export folder field and click
 %       Save TIFFs. One TIFF is saved per visible view and dataset.
 %       Filenames encode the dataset, view, selected indices or averaging
@@ -211,7 +241,7 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
 %
 %   Author:       Tianhui (Cindy) Jie
 %   Date:         November 22, 2026
-%   Version:      1.2.3
+%   Version:      1.2.15
 %   License:      GNU General Public License v3.0
 %
 %   Copyright (c) 2026 Tianhui (Cindy) Jie
@@ -233,6 +263,26 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
 %       https://chatgpt.com/
 %
 % VERSION HISTORY
+%   v1.3.0 (2026-11-22)
+%       - Added freehand ROI selection in XY, X-D, and Y-D views, with
+%         Confirm, Restart, and Accept controls and red preview overlays.
+%       - Added Show ROI, Add Another ROI, and Erase ROI controls; display
+%         accepted masks as translucent red overlays in all linked views.
+%       - Added sequential ROI refinement across different planes: existing
+%         masks appear red, candidates yellow, and each 2-D mask is
+%         replicated across omitted dimensions before N-D intersection.
+%       - Added ROI initialization through initialView.roiMask, including
+%         compatible-dimension replication, immediate display, refinement,
+%         erasing, export, and direct return of the preloaded mask.
+%       - Added optional logical MASK output and ROISelection appdata for
+%         retrieving masks and selected pixels; corrected ROI mask creation
+%         and overlay sizing when switching views or dimensions.
+%       - Added three TIFF export modes selected from one dropdown:
+%         figureAnnotations, crossSectionOnly, and roiMaskOnly. ROI-only
+%         output is an 8-bit black-and-white mask aligned with the image.
+%       - Updated EXPORTOPTIONS to outputFolder and exportMode, preserving
+%         current display limits, colormaps, NaN colors, physical aspect
+%         ratios, and collision-safe filenames in exported views.
 %   v1.2.3 (2026-11-22)
 %       - Added mouse-wheel navigation for slice, averaging-window, and
 %         X/Y position sliders, including nearby-slider hover selection,
@@ -306,14 +356,14 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
     if isempty(exportOptions), exportOptions = struct(); end
 
     % Validate export configuration before constructing the GUI.
-    validExportFields = {'outputFolder','crossSectionOnly'};
+    validExportFields = {'outputFolder','exportMode'};
     if ~isscalar(exportOptions) || ...
             ~all(ismember(fieldnames(exportOptions),validExportFields))
         error('SliceViewerND:ExportOptions', ...
-            'EXPORTOPTIONS must be a scalar struct with outputFolder and/or crossSectionOnly.');
+            'EXPORTOPTIONS must be a scalar struct with outputFolder and/or exportMode.');
     end
     exportFolder = string(pwd);
-    crossSectionOnly = false;
+    exportMode = 'figureAnnotations';
     if isfield(exportOptions,'outputFolder')
         value = exportOptions.outputFolder;
         if ~(ischar(value) && isrow(value)) && ...
@@ -322,13 +372,17 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
         end
         exportFolder = string(value);
     end
-    if isfield(exportOptions,'crossSectionOnly')
-        value = exportOptions.crossSectionOnly;
-        if ~isscalar(value) || ...
-                ~(islogical(value) || (isnumeric(value) && isreal(value) && ismember(value,[0 1])))
-            error('SliceViewerND:ExportOptions','crossSectionOnly must be a logical scalar.');
+    if isfield(exportOptions,'exportMode')
+        value = exportOptions.exportMode;
+        if ~(ischar(value) && isrow(value)) && ...
+                ~(isstring(value) && isscalar(value) && ~ismissing(value))
+            error('SliceViewerND:ExportOptions','exportMode must be a text scalar.');
         end
-        crossSectionOnly = logical(value);
+        exportMode = char(value);
+        if ~ismember(exportMode,{'crossSectionOnly','roiMaskOnly','figureAnnotations'})
+            error('SliceViewerND:ExportOptions', ...
+                'exportMode must be crossSectionOnly, roiMaskOnly, or figureAnnotations.');
+        end
     end
 
     % Capture the caller variable name before wrapping numeric input in a cell.
@@ -434,7 +488,7 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
     xyAvgRanges = [1 nX; 1 nY];
     % Validate and apply optional initial-view configuration before UI creation.
     validFields = {'indices','averageRanges','orthogonal', ...
-        'orthDimension','xyPositions','xyAverageRanges'};
+        'orthDimension','xyPositions','xyAverageRanges','roiMask'};
     if ~isscalar(initialView) || ~all(ismember(fieldnames(initialView),validFields))
         error('SliceViewerND:InitialView','INITIALVIEW must be a scalar struct with recognized fields.');
     end
@@ -499,9 +553,44 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
             xyAvgRanges(d,:) = r;
         end
     end
+    initialROIVolume = [];
+    if isfield(initialView,'roiMask') && ~isempty(initialView.roiMask)
+        inputROIMask = initialView.roiMask;
+        if ~(islogical(inputROIMask) || isnumeric(inputROIMask)) || ...
+                ~isreal(inputROIMask) || issparse(inputROIMask) || ...
+                any(~isfinite(double(inputROIMask(:)))) || ...
+                any(inputROIMask(:)~=0 & inputROIMask(:)~=1)
+            error('SliceViewerND:InitialROIMask', ...
+                'initialView.roiMask must be a full, finite binary numeric or logical array.');
+        end
+        roiSize = ones(1,nDimensions);
+        if ndims(inputROIMask)>nDimensions
+            error('SliceViewerND:InitialROIMask', ...
+                'roiMask cannot have more dimensions than the input data.');
+        end
+        for d=1:nDimensions
+            roiSize(d) = size(inputROIMask,d);
+        end
+        if any(mod(commonSize,roiSize)~=0)
+            error('SliceViewerND:InitialROIMask', ...
+                ['Each roiMask dimension must divide the corresponding data ' ...
+                 'dimension exactly (data size: %s, ROI size: %s).'], ...
+                mat2str(commonSize),mat2str(roiSize));
+        end
+        initialROIVolume = repmat(reshape(logical(inputROIMask),roiSize), ...
+            commonSize ./ roiSize);
+    end
     currentDisplayRange = ranges;
     selectedImage = 1;
     currentDimensionRatio = dimensionRatio;
+    acceptedROI = []; % Accepted mask metadata and optional volumetric mask.
+    if ~isempty(initialROIVolume)
+        acceptedROI = struct('mask',initialROIVolume, ...
+            'volumeMask',initialROIVolume,'view','Volume', ...
+            'orthDimension',orthDim,'imageIndex',1, ...
+            'imageName',char(imageNames(1)));
+        mask = initialROIVolume;
+    end
     cachedOrthVol = cell(1,nImages);
     cachedOrthDim = 0;
     activeSlider = [];  % Last operated slider (slice, averaging window, X or Y).
@@ -551,13 +640,13 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
     toolbarContainerGL.RowSpacing = 4;
     toolbarContainerGL.Padding = [0 0 0 0];
 
-    toolbarGL = uigridlayout(toolbarContainerGL,[1 7]);
+    toolbarGL = uigridlayout(toolbarContainerGL,[1 10]);
     toolbarGL.Layout.Row = 1;
     toolbarGL.Layout.Column = 1;
     toolbarGL.Layout.Row = 1;
     toolbarGL.Layout.Column = 1;
     toolbarGL.RowHeight = {'1x'};
-    toolbarGL.ColumnWidth = {150,85,145,'1x',155,220,260};
+    toolbarGL.ColumnWidth = {150,85,145,'1x',95,115,90,155,220,260};
     toolbarGL.ColumnSpacing = 7;
     toolbarGL.Padding = [0 0 0 0];
 
@@ -572,13 +661,24 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
         'FontColor',[0.85 0.62 0],'FontWeight','bold', ...
         'HorizontalAlignment','left','Visible','off');
     mainPositionLabel.Layout.Column = 4;
+    roiToggle = uibutton(toolbarGL,'state','Text','Show ROI', ...
+        'Value',false,'Enable','off');
+    roiToggle.Layout.Column = 5;
+    roiToggle.ValueChangedFcn = @(~,~) updateROIOverlays();
+    roiButton = uibutton(toolbarGL,'push','Text','Freehand ROI');
+    roiButton.Layout.Column = 6;
+    roiButton.ButtonPushedFcn = @(~,~) openFreehandROI();
+    eraseROIButton = uibutton(toolbarGL,'push','Text','Erase ROI', ...
+        'Visible','off');
+    eraseROIButton.Layout.Column = 7;
+    eraseROIButton.ButtonPushedFcn = @(~,~) eraseAcceptedROI();
 
     imageSelector = uidropdown(toolbarGL,'Items',cellstr(imageNames), ...
         'ItemsData',1:nImages,'Value',1);
-    imageSelector.Layout.Column = 5;
+    imageSelector.Layout.Column = 8;
 
     climGL = uigridlayout(toolbarGL,[1 4]);
-    climGL.Layout.Column = 6;
+    climGL.Layout.Column = 9;
     climGL.ColumnWidth = {45,'1x',20,'1x'};
     climGL.RowHeight = {'1x'};
     climGL.Padding = [0 0 0 0];
@@ -591,7 +691,7 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
         'ValueDisplayFormat','%.5g');
 
     ratioGL = uigridlayout(toolbarGL,[1 7]);
-    ratioGL.Layout.Column = 7;
+    ratioGL.Layout.Column = 10;
     ratioGL.RowHeight = {'1x'};
     ratioGL.ColumnWidth = {45,16,'1x',16,'1x',0,0};
     ratioGL.Padding = [0 0 0 0];
@@ -611,15 +711,17 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
     exportGL.Layout.Row = 2;
     exportGL.Layout.Column = 1;
     exportGL.RowHeight = {'1x'};
-    exportGL.ColumnWidth = {95,'1x',160,125};
+    exportGL.ColumnWidth = {95,'1x',205,125};
     exportGL.ColumnSpacing = 7;
     exportGL.Padding = [0 0 0 0];
     uilabel(exportGL,'Text','Export folder:','HorizontalAlignment','right');
     exportFolderField = uieditfield(exportGL,'text','Value',char(exportFolder), ...
         'Placeholder','Full path to output folder');
-    crossSectionButton = uibutton(exportGL,'state', ...
-        'Text','Cross-section only','Value',crossSectionOnly);
-    crossSectionButton.Layout.Column = 3;
+    exportModeDropdown = uidropdown(exportGL, ...
+        'Items',{'Figure annotations','Cross-section only','ROI mask only'}, ...
+        'ItemsData',{'figureAnnotations','crossSectionOnly','roiMaskOnly'}, ...
+        'Value',exportMode);
+    exportModeDropdown.Layout.Column = 3;
     saveTiffButton = uibutton(exportGL,'push','Text','Save TIFFs');
     saveTiffButton.Layout.Column = 4;
     saveTiffButton.ButtonPushedFcn = @(~,~) saveCurrentViews();
@@ -665,6 +767,7 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
     imageGL = gobjects(1,nImages);
     axMain = gobjects(1,nImages); axXD = gobjects(1,nImages); axYD = gobjects(1,nImages);
     hMain = gobjects(1,nImages); hXD = gobjects(1,nImages); hYD = gobjects(1,nImages);
+    roiMain = gobjects(1,nImages); roiXD = gobjects(1,nImages); roiYD = gobjects(1,nImages);
     hVertical = gobjects(1,nImages); hHorizontal = gobjects(1,nImages);
     hVerticalEnd = gobjects(1,nImages); hHorizontalEnd = gobjects(1,nImages);
     hMainXD = gobjects(nImages,2); hMainYD = gobjects(nImages,2);
@@ -731,7 +834,11 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
     hYD(im).AlphaDataMapping = 'none';
     axYD(im).Visible = 'off';
 
+    % Truecolor images ensure the ROI red is independent of each colormap.
     hold(axMain(im),'on');
+    roiMain(im) = image(axMain(im),zeros(nY,nX,3), ...
+        'XData',[1 nX],'YData',[1 nY],'AlphaData',zeros(nY,nX), ...
+        'AlphaDataMapping','none','HitTest','off');
     hVertical(im) = line(axMain(im),[xPos xPos],[0.5 nY+0.5], ...
         'Color','g','LineWidth',1.5,'LineStyle','--','Visible','off','HitTest','off');
     hHorizontal(im) = line(axMain(im),[0.5 nX+0.5],[yPos yPos], ...
@@ -745,6 +852,8 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
     
     
     hold(axXD(im),'on');
+    roiXD(im) = image(axXD(im),zeros(nDims(1),nX,3), ...
+        'AlphaData',zeros(nDims(1),nX),'AlphaDataMapping','none','HitTest','off');
     for k=1:2
         hMainXD(im,k) = line(axXD(im),[0.5 nX+0.5],[1 1], ...
             'Color','y','LineWidth',1.5,'LineStyle','--', ...
@@ -756,6 +865,8 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
     end
     hold(axXD(im),'off');
     hold(axYD(im),'on');
+    roiYD(im) = image(axYD(im),zeros(nY,nDims(1),3), ...
+        'AlphaData',zeros(nY,nDims(1)),'AlphaDataMapping','none','HitTest','off');
     for k=1:2
         hMainYD(im,k) = line(axYD(im),[1 1],[0.5 nY+0.5], ...
             'Color','y','LineWidth',1.5,'LineStyle','--', ...
@@ -995,7 +1106,15 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
     fig.WindowButtonDownFcn = @sliderMouseClickCallback;
     fig.WindowScrollWheelFcn = @sliderMouseWheelCallback;
 
+    if isempty(acceptedROI), mask = []; end % Preserve an initial ROI mask.
     % Synchronize initial state to UI controls without invoking user callbacks.
+    if ~isempty(acceptedROI)
+        roiToggle.Enable = 'on';
+        roiToggle.Value = true;
+        roiButton.Text = 'Add Another ROI';
+        eraseROIButton.Visible = 'on';
+        setappdata(fig,'ROISelection',acceptedROI);
+    end
     orthDropdown.Value = orthDim;
     for d=1:nSliders
         sliders(d).Value = idx(d);
@@ -1031,6 +1150,15 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
         updateImages();
     end
     updateDimensionRatios();
+    % Requesting the second output waits until a freehand ROI is drawn.
+    % Calling with only FIG preserves the original nonblocking viewer.
+    if nargout >= 2 && isempty(acceptedROI)
+        uiwait(fig);
+        if isvalid(fig) && isappdata(fig,'ROISelection')
+            mask = getappdata(fig,'ROISelection');
+            mask = mask.mask;
+        end
+    end
 
     function saveCurrentViews()
         % Export either the decorated axes or only their image pixels.
@@ -1049,6 +1177,10 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
                 uialert(fig,msg,'Cannot Create Folder');
                 return;
             end
+        end
+        if strcmp(exportModeDropdown.Value,'roiMaskOnly') && isempty(acceptedROI)
+            uialert(fig,'Accept an ROI before exporting ROI masks.','No Accepted ROI');
+            return;
         end
         saveTiffButton.Enable = 'off';
         cleanup = onCleanup(@() set(saveTiffButton,'Enable','on'));
@@ -1100,6 +1232,9 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
 
         function saveOneView(ax,hImage,imageIndex,baseName,viewKind)
             % Avoid overwriting previous exports of the same view.
+            if strcmp(exportModeDropdown.Value,'roiMaskOnly')
+                baseName = [baseName '_ROI-mask'];
+            end
             baseName = safeFilePart(baseName);
             filePath = fullfile(outputDir,[baseName '.tif']);
             suffix = 2;
@@ -1120,7 +1255,7 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
                     pixelSpacing = currentDimensionRatio([3 2]);
             end
             daspect(ax,[pixelSpacing 1]);
-            if crossSectionButton.Value
+            if strcmp(exportModeDropdown.Value,'crossSectionOnly') || strcmp(exportModeDropdown.Value,'roiMaskOnly')
                 % Render precisely one RGB pixel per displayed image sample.
                 % This excludes ticks, labels, colorbars, and dashed lines.
                 values = double(hImage.CData);
@@ -1163,8 +1298,29 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
                 end
                 rowIndices = min(nr,max(1,round(((1:outRows)-0.5)*nr/outRows+0.5)));
                 colIndices = min(nc,max(1,round(((1:outCols)-0.5)*nc/outCols+0.5)));
-                rgb = rgb(rowIndices,colIndices,:);
-                imwrite(uint8(round(255*rgb)),filePath,'tif','Compression','none');
+                if strcmp(exportModeDropdown.Value,'roiMaskOnly')
+                    % Export a standalone transparent-red mask (RGBA TIFF),
+                    % aligned pixel-for-pixel with cross-section-only output.
+                    % Keep the alpha channel rather than baking red into the
+                    % original image: 0 outside, 35% opaque red inside.
+                    switch viewKind
+                        case 'XY', mask2D = projectROIVolume(roiAsVolume(acceptedROI),'XY',orthDim);
+                        case 'XD', mask2D = projectROIVolume(roiAsVolume(acceptedROI),'X-D',orthDim);
+                        case 'YD', mask2D = projectROIVolume(roiAsVolume(acceptedROI),'Y-D',orthDim);
+                    end
+                    if ~isequal(size(mask2D),[nr nc])
+                        error('SliceViewerND:ROISize', ...
+                            'ROI mask dimensions do not match the displayed %s view.',viewKind);
+                    end
+                    % Export an 8-bit binary mask: white ROI, black background.
+                    % Use the same nearest-neighbor pixel mapping as the
+                    % crossSectionOnly export to preserve exact alignment.
+                    binaryMask = uint8(255 * double(logical(mask2D(rowIndices,colIndices))));
+                    imwrite(binaryMask,filePath,'tif','Compression','none');
+                else
+                    rgb = rgb(rowIndices,colIndices,:);
+                    imwrite(uint8(round(255*rgb)),filePath,'tif','Compression','none');
+                end
             else
                 exportgraphics(ax,filePath,'Resolution',300,'BackgroundColor','current');
             end
@@ -1176,6 +1332,329 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
         name = regexprep(name,'[^a-zA-Z0-9._-]','-');
         name = regexprep(name,'-+','-');
         if isempty(name), name = 'Image'; end
+    end
+
+    function openFreehandROI()
+        % A new drawing starts a replacement ROI; Draw Another ROI refines
+        % the accepted ROI by intersecting two extruded plane masks.
+        viewNames = cell(1,nImages*(1+2*double(orthEnabled)));
+        viewImage = zeros(size(viewNames));
+        viewKind = cell(size(viewNames));
+        count = 0;
+        for im=1:nImages
+            kinds = {'XY'};
+            if orthEnabled, kinds = {'XY','X-D','Y-D'}; end
+            for v=1:numel(kinds)
+                count = count+1;
+                viewNames{count} = sprintf('%s | %s',char(imageNames(im)),kinds{v});
+                viewImage(count) = im;
+                viewKind{count} = kinds{v};
+            end
+        end
+        roiFig = uifigure('Name','Freehand ROI - Select View', ...
+            'Position',[150 150 940 650]);
+        roiGL = uigridlayout(roiFig,[2 1]);
+        roiGL.RowHeight = {42,'1x'};
+        roiToolbar = uigridlayout(roiGL,[1 5]);
+        roiToolbar.ColumnWidth = {'1x',95,105,105,105};
+        roiToolbar.Padding = [0 0 0 0];
+        roiSelect = uidropdown(roiToolbar,'Items',viewNames,'Value',viewNames{1});
+        drawButton = uibutton(roiToolbar,'push','Text','Draw ROI');
+        confirmButton = uibutton(roiToolbar,'push','Text','Confirm ROI','Enable','off');
+        restartButton = uibutton(roiToolbar,'push','Text','Restart ROI');
+        acceptButton = uibutton(roiToolbar,'push','Text','Accept ROI','Enable','off');
+        roiAx = uiaxes(roiGL);
+        roiAx.Layout.Row = 2;
+        roi = [];
+        overlay = [];
+        previousOverlay = [];
+        candidateMask = [];
+        snapshot = [];
+        snapshotImageHandle = [];
+        snapshotIm = [];
+        snapshotKind = '';
+        refineMode = ~isempty(acceptedROI);
+        previousVolume = [];
+        previousView = '';
+        previousOrthDim = 0;
+        roiSelect.ValueChangedFcn = @(~,~) showSelectedView();
+        drawButton.ButtonPushedFcn = @(~,~) drawSelectedROI();
+        confirmButton.ButtonPushedFcn = @(~,~) confirmSelectedROI();
+        restartButton.ButtonPushedFcn = @(~,~) restartSelectedROI();
+        acceptButton.ButtonPushedFcn = @(~,~) acceptSelectedROI();
+        if refineMode
+            previousVolume = roiAsVolume(acceptedROI);
+            previousView = char(acceptedROI.view);
+            previousOrthDim = acceptedROI.orthDimension;
+            if strcmp(previousView,'Volume'), previousView = 'Combined'; end
+            preferred = 'XY';
+            if strcmp(previousView,'XY'), preferred = 'X-D';
+            elseif strcmp(previousView,'X-D'), preferred = 'Y-D'; end
+            choices = find(strcmp(viewKind,preferred) & viewImage==acceptedROI.imageIndex);
+            if ~isempty(choices), roiSelect.Value = viewNames{choices(1)}; end
+        end
+        showSelectedView();
+
+        function [values,im,kind] = selectedView()
+            selection = find(strcmp(viewNames,roiSelect.Value),1);
+            im = viewImage(selection);
+            kind = viewKind{selection};
+            switch kind
+                case 'XY', values = hMain(im).CData;
+                case 'X-D', values = hXD(im).CData;
+                case 'Y-D', values = hYD(im).CData;
+            end
+        end
+
+        function showSelectedView()
+            clearDrawing();
+            [snapshot,snapshotIm,snapshotKind] = selectedView();
+            snapshot = double(snapshot);
+            snapshotImageHandle = imagesc(roiAx,snapshot);
+            colormap(roiAx,cmap{snapshotIm});
+            clim(roiAx,currentDisplayRange(snapshotIm,:));
+            roiAx.Color = nanColors(snapshotIm,:);
+            roiAx.YDir = 'reverse';
+            roiAx.XLim = [0.5 size(snapshot,2)+0.5];
+            roiAx.YLim = [0.5 size(snapshot,1)+0.5];
+            switch snapshotKind
+                case 'XY', spacing = currentDimensionRatio([1 2]);
+                case 'X-D', spacing = currentDimensionRatio([1 3]);
+                case 'Y-D', spacing = currentDimensionRatio([3 2]);
+            end
+            daspect(roiAx,[spacing 1]);
+            if refineMode
+                oldMask = projectROIVolume(previousVolume,snapshotKind,orthDim);
+                drawColorOverlay(oldMask,[1 0 0],0.35,'previous');
+                title(roiAx,'Previous ROI (red) - draw a second ROI in another plane', ...
+                    'Interpreter','none');
+            else
+                title(roiAx,sprintf('%s | %s',char(imageNames(snapshotIm)),snapshotKind), ...
+                    'Interpreter','none');
+            end
+        end
+
+        function clearDrawing()
+            if ~isempty(roi) && isvalid(roi), delete(roi); end
+            if ~isempty(overlay) && isvalid(overlay), delete(overlay); end
+            if ~isempty(previousOverlay) && isvalid(previousOverlay)
+                delete(previousOverlay);
+            end
+            roi = [];
+            overlay = [];
+            previousOverlay = [];
+            candidateMask = [];
+            confirmButton.Enable = 'off';
+            acceptButton.Enable = 'off';
+            drawButton.Enable = 'on';
+            roiSelect.Enable = 'on';
+        end
+
+        function drawColorOverlay(binary,color,opacity,which)
+            rgb = zeros([size(binary),3]);
+            for channel = 1:3, rgb(:,:,channel) = color(channel); end
+            hold(roiAx,'on');
+            h = image(roiAx,rgb,'XData',[1 size(binary,2)], ...
+                'YData',[1 size(binary,1)],'AlphaData',opacity*double(binary), ...
+                'AlphaDataMapping','none','HitTest','off');
+            hold(roiAx,'off');
+            if strcmp(which,'previous'), previousOverlay = h;
+            else, overlay = h; end
+        end
+
+        function drawSelectedROI()
+            clearDrawing();
+            if refineMode
+                oldMask = projectROIVolume(previousVolume,snapshotKind,orthDim);
+                drawColorOverlay(oldMask,[1 0 0],0.35,'previous');
+            end
+            try
+                roi = drawfreehand(roiAx,'Color',[0 1 0]);
+                if isempty(roi) || ~isvalid(roi), return; end
+                if size(roi.Position,1)<3, return; end
+                confirmButton.Enable = 'on';
+                roiSelect.Enable = 'off';
+                title(roiAx,'ROI drawn - click Confirm ROI to preview', ...
+                    'Interpreter','none');
+            catch ME
+                uialert(roiFig,ME.message,'ROI Drawing Failed');
+            end
+        end
+
+        function confirmSelectedROI()
+            if isempty(roi) || ~isvalid(roi), return; end
+            try
+                candidateMask = logical(createMask(roi,snapshotImageHandle));
+                if ~isequal(size(candidateMask),size(snapshot)) || ~any(candidateMask(:))
+                    uialert(roiFig,'Draw a nonempty ROI inside the image.','Invalid ROI');
+                    return;
+                end
+                if refineMode
+                    drawColorOverlay(candidateMask,[1 1 0],0.40,'candidate');
+                    % First propagate the yellow ROI across every dimension absent
+                    % from its drawing plane; only then intersect with red.
+                    yellowVolume = planeToVolume(candidateMask,snapshotKind,orthDim);
+                    previewVolume = yellowVolume & previousVolume;
+                    title(roiAx,sprintf('Red: previous | Yellow: new | Intersection: %d voxels', ...
+                        nnz(previewVolume)),'Interpreter','none');
+                else
+                    drawColorOverlay(candidateMask,[1 0 0],0.35,'candidate');
+                    title(roiAx,sprintf('Red mask preview | %d pixels | Accept or Restart', ...
+                        nnz(candidateMask)),'Interpreter','none');
+                end
+                delete(roi);
+                roi = [];
+                confirmButton.Enable = 'off';
+                drawButton.Enable = 'off';
+                acceptButton.Enable = 'on';
+            catch ME
+                uialert(roiFig,ME.message,'ROI Confirmation Failed');
+            end
+        end
+
+        function restartSelectedROI()
+            % Restart keeps the previous accepted ROI intact.
+            showSelectedView();
+        end
+
+        function acceptSelectedROI()
+            if isempty(candidateMask) || ~any(candidateMask(:)), return; end
+            if ~isvalid(fig), return; end
+            result = struct('mask',candidateMask, ...
+                'pixelValues',snapshot(candidateMask),'imageIndex',snapshotIm, ...
+                'imageName',imageNames(snapshotIm),'view',snapshotKind, ...
+                'displayedData',snapshot,'indices',idx, ...
+                'averageEnabled',avgEnabled,'averageRanges',avgRanges, ...
+                'orthDimension',orthDim,'xyPositions',[xPos yPos], ...
+                'xyAverageEnabled',xyAvgEnabled,'xyAverageRanges',xyAvgRanges);
+            % Expand every accepted 2-D ROI using the same N-D repmat path.
+            newVolume = planeToVolume(candidateMask,snapshotKind,orthDim);
+            if refineMode
+                if strcmp(snapshotKind,previousView) && ...
+                        (~strcmp(snapshotKind,'XY') && orthDim==previousOrthDim || ...
+                         strcmp(snapshotKind,'XY'))
+                    uialert(roiFig,'Choose another plane for the second ROI.', ...
+                        'Different Plane Required');
+                    return;
+                end
+                % Broadcast the complete yellow ROI to N-D before applying
+                % the previously accepted red N-D mask.
+                yellowVolume = newVolume;
+                result.mask = yellowVolume & previousVolume;
+                result.volumeMask = result.mask;
+                result.view = 'Volume';
+                result.pixelValues = [];
+                result.previousView = previousView;
+                result.secondView = snapshotKind;
+                result.previousOrthDimension = previousOrthDim;
+            else
+                % Keep the original 2-D ROI as result.mask, but store the
+                % fully replicated N-D red mask for all future intersections.
+                result.volumeMask = newVolume;
+            end
+            acceptedROI = result;
+            roiToggle.Enable = 'on';
+            roiToggle.Value = true;
+            setappdata(fig,'ROISelection',result);
+            updateROIOverlays();
+            mask = result.mask;
+            uiresume(fig);
+            roiButton.Text = 'Add Another ROI';
+            eraseROIButton.Visible = 'on';
+            if isvalid(roiFig), delete(roiFig); end
+        end
+    end
+
+    function eraseAcceptedROI()
+        % Erase the accepted mask and restore the original ROI controls.
+        acceptedROI = [];
+        mask = [];
+        if isappdata(fig,'ROISelection'), rmappdata(fig,'ROISelection'); end
+        roiToggle.Value = false;
+        roiToggle.Enable = 'off';
+        roiButton.Text = 'Freehand ROI';
+        eraseROIButton.Visible = 'off';
+        updateROIOverlays();
+    end
+
+    function volume = planeToVolume(binary,kind,sourceOrthDim)
+        % Dimensions not represented in the ROI plane are broadcast.
+        switch char(kind)
+            case 'XY'
+                shape = [nY nX ones(1,nSliders)];
+                volume = reshape(logical(binary),shape);
+                volume = repmat(volume,commonSize ./ shape);
+            case 'X-D'
+                % Source image is D-by-X; replicate along Y and other dims.
+                shape = ones(1,nDimensions);
+                shape(2) = nX;
+                shape(sourceOrthDim+2) = nDims(sourceOrthDim);
+                volume = reshape(binary.',shape);
+                repeats = commonSize ./ shape;
+                volume = repmat(logical(volume),repeats);
+            case 'Y-D'
+                shape = ones(1,nDimensions);
+                shape(1) = nY;
+                shape(sourceOrthDim+2) = nDims(sourceOrthDim);
+                volume = reshape(binary,shape);
+                repeats = commonSize ./ shape;
+                volume = repmat(logical(volume),repeats);
+            otherwise
+                error('SliceViewerND:ROIPlane','Unknown ROI plane.');
+        end
+        % Every plane must yield a full-size logical mask before intersection.
+        if ~isequal(size(volume),commonSize)
+            error('SliceViewerND:ROIVolumeSize', ...
+                'ROI propagation produced an unexpected volume size.');
+        end
+    end
+
+    function volume = roiAsVolume(result)
+        if isfield(result,'volumeMask')
+            volume = logical(result.volumeMask);
+        else
+            volume = planeToVolume(result.mask,result.view,result.orthDimension);
+        end
+    end
+
+    function projected = projectROIVolume(volume,kind,displayOrthDim)
+        % Match data extraction: logical OR for all averaged dimensions.
+        subs = repmat({1},1,nDimensions);
+        subs(1:2) = {':',':'};
+        for d=1:nSliders
+            if d==displayOrthDim && ~strcmp(kind,'XY')
+                subs{d+2} = 1:nDims(d);
+            elseif avgEnabled(d)
+                subs{d+2} = avgRanges(d,1):avgRanges(d,2);
+            else
+                subs{d+2} = idx(d);
+            end
+        end
+        selected = volume(subs{:});
+        for d=1:nSliders
+            if avgEnabled(d) && (d~=displayOrthDim || strcmp(kind,'XY'))
+                selected = any(selected,d+2);
+            end
+        end
+        switch kind
+            case 'XY'
+                projected = reshape(selected,nY,nX);
+            case 'X-D'
+                if xyAvgEnabled(2)
+                    selected = any(selected(xyAvgRanges(2,1):xyAvgRanges(2,2),:,:),1);
+                else
+                    selected = selected(yPos,:,:);
+                end
+                projected = reshape(permute(selected,[3 2 1]),nDims(displayOrthDim),nX);
+            case 'Y-D'
+                if xyAvgEnabled(1)
+                    selected = any(selected(:,xyAvgRanges(1,1):xyAvgRanges(1,2),:),2);
+                else
+                    selected = selected(:,xPos,:);
+                end
+                projected = reshape(selected,nY,nDims(displayOrthDim));
+        end
+        projected = logical(projected);
     end
 
     function selectImage(value)
@@ -1734,6 +2213,36 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
         end % panels
     end
 
+    function updateROIOverlays()
+        active = ~isempty(acceptedROI) && roiToggle.Value;
+        if active, volume = roiAsVolume(acceptedROI); end
+        for imROI = 1:nImages
+            if ~active
+                roiMain(imROI).AlphaData = 0;
+                roiXD(imROI).AlphaData = 0;
+                roiYD(imROI).AlphaData = 0;
+                continue;
+            end
+            applyRed(roiMain(imROI),projectROIVolume(volume,'XY',orthDim));
+            if orthEnabled
+                applyRed(roiXD(imROI),projectROIVolume(volume,'X-D',orthDim));
+                applyRed(roiYD(imROI),projectROIVolume(volume,'Y-D',orthDim));
+            else
+                roiXD(imROI).AlphaData = 0;
+                roiYD(imROI).AlphaData = 0;
+            end
+        end
+        function applyRed(handle,logicalMask)
+            handle.AlphaData = 0;
+            handle.CData = cat(3,ones(size(logicalMask)), ...
+                zeros(size(logicalMask)),zeros(size(logicalMask)));
+            handle.XData = [1 size(logicalMask,2)];
+            handle.YData = [1 size(logicalMask,1)];
+            handle.AlphaData = 0.35*double(logicalMask);
+            handle.AlphaDataMapping = 'none';
+        end
+    end
+
     function updateImages(recomputeOrth)
         if nargin<1, recomputeOrth = true; end
         titleParts = strings(1,nSliders);
@@ -1829,5 +2338,6 @@ function fig = SliceViewerND(data, displayRange, cmap, dimNames, imageNames, ...
         cachedOrthDim = orthDim;
         updateMainPositionIndicators();
         updateOrthogonalIntersectionIndicators();
+        updateROIOverlays();
     end
 end
